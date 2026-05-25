@@ -19,13 +19,17 @@ document.addEventListener('DOMContentLoaded', () => {
         showAnnotations: true,
         // Batch mode results
         batchQueue: [],
-        isProcessingBatch: false
+        isProcessingBatch: false,
+        
+        // Gemini Configuration
+        geminiApiKey: localStorage.getItem('gemini_api_key') || '',
+        geminiModel: localStorage.getItem('gemini_model') || 'gemini-2.5-flash',
+        geminiCustomModel: localStorage.getItem('gemini_custom_model') || ''
     };
 
-    // Predefined Cracks Coordinates (for sample images)
-    // Coords are represented as relative coordinates (0 to 1000) for resolution independence
+    // Predefined Cracks Coordinates (for sample images fallback)
     const sampleCracksData = {
-        '1': [ // Pier Crack - 1 long vertical crack with a minor branch
+        '1': [
             {
                 id: 1,
                 points: [
@@ -33,7 +37,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     {x: 480, y: 400}, {x: 520, y: 500}, {x: 512, y: 600}, {x: 535, y: 700}, 
                     {x: 522, y: 800}, {x: 495, y: 900}, {x: 485, y: 1000}
                 ],
-                widthPx: 6.2, // pixel width of crack
+                widthPx: 6.2,
                 box: {x: 400, y: 20, w: 180, h: 960}
             },
             {
@@ -45,7 +49,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 box: {x: 475, y: 395, w: 110, h: 160}
             }
         ],
-        '2': [ // Deck Crack - Web/Spiderweb crack
+        '2': [
             {
                 id: 1,
                 points: [
@@ -72,7 +76,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 box: {x: 440, y: 500, w: 160, h: 480}
             }
         ],
-        '3': [ // Girder Crack - Diagonal shear crack
+        '3': [
             {
                 id: 1,
                 points: [
@@ -97,6 +101,20 @@ document.addEventListener('DOMContentLoaded', () => {
         fileInput: document.getElementById('file-input'),
         fileListContainer: document.getElementById('file-list-container'),
         
+        // Gemini API Configuration
+        accHeaderGemini: document.getElementById('acc-header-gemini'),
+        accContentGemini: document.getElementById('acc-content-gemini'),
+        inputApiKey: document.getElementById('input-api-key'),
+        selectModel: document.getElementById('select-model'),
+        groupCustomModel: document.getElementById('group-custom-model'),
+        inputCustomModel: document.getElementById('input-custom-model'),
+        geminiStatusText: document.getElementById('gemini-status-text'),
+        
+        // Header Dynamic Status
+        headerStatusPill: document.getElementById('header-status-pill'),
+        headerStatusDot: document.getElementById('header-status-dot'),
+        headerStatusText: document.getElementById('header-status-text'),
+
         // Calibration Accordion & Inputs
         accHeaderCalib: document.getElementById('acc-header-calib'),
         accContentCalib: document.getElementById('acc-content-calib'),
@@ -165,6 +183,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initialize Accordion Behaviors
     function initAccordions() {
         const setups = [
+            { header: el.accHeaderGemini, content: el.accContentGemini },
             { header: el.accHeaderCalib, content: el.accContentCalib },
             { header: el.accHeaderProj, content: el.accContentProj }
         ];
@@ -207,7 +226,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // Calibrate GSD (Ground Sample Distance)
-    // Formula: GSD = (FlightHeight * SensorWidth) / (FocalLength * 300)
     function recalculateGSD() {
         const height = parseFloat(el.inputHeight.value) || 0;
         const focal = parseFloat(el.inputFocal.value) || 0;
@@ -215,7 +233,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (height > 0 && focal > 0 && sensor > 0) {
             const calculated = (height * sensor) / (focal * 300);
-            // Round to 4 decimal places
             state.gsd = parseFloat(calculated.toFixed(4));
             el.inputGsd.value = state.gsd;
             printLog(`传感器参数已变更，重新校准 GSD: ${state.gsd} mm/pixel`, 'info');
@@ -231,7 +248,80 @@ document.addEventListener('DOMContentLoaded', () => {
         printLog(`手动输入校准 GSD: ${state.gsd} mm/pixel`, 'info');
     });
 
-    // Tabs switching between modes
+    // Gemini API Configurations & LocalStorage Bindings
+    function loadGeminiSettings() {
+        el.inputApiKey.value = state.geminiApiKey;
+        el.selectModel.value = state.geminiModel;
+        el.inputCustomModel.value = state.geminiCustomModel;
+        
+        if (state.geminiModel === 'custom') {
+            el.groupCustomModel.style.display = 'block';
+        } else {
+            el.groupCustomModel.style.display = 'none';
+        }
+        updateGeminiStatus();
+    }
+
+    function updateGeminiStatus() {
+        const key = state.geminiApiKey.trim();
+        const activeModel = getActiveModelName();
+
+        if (key) {
+            // Gemini mode active
+            el.headerStatusText.innerText = `Gemini AI 检测器已就绪`;
+            el.headerStatusDot.style.backgroundColor = 'var(--accent-cyan)';
+            el.headerStatusDot.style.boxShadow = '0 0 8px var(--accent-cyan)';
+            
+            // Set dynamic pseudo-element pulse color
+            el.headerStatusDot.style.setProperty('--accent-emerald', '#06b6d4');
+            
+            el.geminiStatusText.innerText = `当前模式：真实 AI 检测 (${activeModel})`;
+            el.geminiStatusText.style.color = 'var(--primary-color)';
+        } else {
+            // YOLO simulation mode
+            el.headerStatusText.innerText = `YOLO 检测器就绪 (模拟)`;
+            el.headerStatusDot.style.backgroundColor = 'var(--accent-emerald)';
+            el.headerStatusDot.style.boxShadow = '0 0 8px var(--accent-emerald)';
+            
+            // Restore pulse color
+            el.headerStatusDot.style.setProperty('--accent-emerald', '#10b981');
+            
+            el.geminiStatusText.innerText = `当前模式：本地 YOLO 模拟检测`;
+            el.geminiStatusText.style.color = 'var(--text-muted)';
+        }
+    }
+
+    function getActiveModelName() {
+        if (state.geminiModel === 'custom') {
+            return state.geminiCustomModel.trim() || 'gemini-3.5-flash';
+        }
+        return state.geminiModel;
+    }
+
+    el.inputApiKey.addEventListener('input', () => {
+        state.geminiApiKey = el.inputApiKey.value;
+        localStorage.setItem('gemini_api_key', state.geminiApiKey);
+        updateGeminiStatus();
+    });
+
+    el.selectModel.addEventListener('change', () => {
+        state.geminiModel = el.selectModel.value;
+        localStorage.setItem('gemini_model', state.geminiModel);
+        if (state.geminiModel === 'custom') {
+            el.groupCustomModel.style.display = 'block';
+        } else {
+            el.groupCustomModel.style.display = 'none';
+        }
+        updateGeminiStatus();
+    });
+
+    el.inputCustomModel.addEventListener('input', () => {
+        state.geminiCustomModel = el.inputCustomModel.value;
+        localStorage.setItem('gemini_custom_model', state.geminiCustomModel);
+        updateGeminiStatus();
+    });
+
+    // Mode Switcher Tabs
     el.btnModeSingle.addEventListener('click', () => {
         if (state.mode === 'single') return;
         state.mode = 'single';
@@ -242,12 +332,10 @@ document.addEventListener('DOMContentLoaded', () => {
         el.dropZone.querySelector('.upload-hint').innerText = '支持 JPG / PNG / BMP / TIFF';
         el.fileInput.removeAttribute('multiple');
         
-        // Reset selected files to empty or single
         state.selectedFiles = [];
         state.activeSampleId = null;
         updateFilesDisplay();
         
-        // Switch main view back to welcome
         showView('welcome');
         printLog('切换到检测模式：单张图片检测', 'info');
     });
@@ -262,14 +350,12 @@ document.addEventListener('DOMContentLoaded', () => {
         el.dropZone.querySelector('.upload-hint').innerText = '支持批量上传多文件';
         el.fileInput.setAttribute('multiple', 'true');
         
-        // Remove sample active states
         el.sampleCards.forEach(c => c.classList.remove('active'));
         
         state.selectedFiles = [];
         state.activeSampleId = null;
         updateFilesDisplay();
         
-        // Switch main view
         showView('welcome');
         printLog('切换到检测模式：批量图片检测', 'info');
     });
@@ -307,7 +393,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     function handleUploadedFiles(files) {
-        // Clear active preset sample since user is uploading custom files
         el.sampleCards.forEach(c => c.classList.remove('active'));
         state.activeSampleId = null;
 
@@ -315,7 +400,6 @@ document.addEventListener('DOMContentLoaded', () => {
             state.selectedFiles = [files[0]];
             printLog(`导入单张图片: ${files[0].name} (${(files[0].size / 1024).toFixed(1)} KB)`, 'info');
         } else {
-            // Append or overwrite? Overwrite for simplicity in this demo session
             state.selectedFiles = files;
             printLog(`导入批量图片共 ${files.length} 张`, 'info');
         }
@@ -331,11 +415,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const sampleId = card.getAttribute('data-sample');
             state.activeSampleId = sampleId;
             
-            // Generate a mock File-like object
             const sampleName = card.title;
             state.selectedFiles = [{
                 name: `sample_crack_${sampleId}.png`,
-                size: 2621440, // 2.5MB
+                size: 2621440, 
                 type: 'image/png',
                 isMockSample: true,
                 sampleId: sampleId,
@@ -343,7 +426,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 src: card.querySelector('img').src
             }];
             
-            // Switch mode to single automatically if they clicked sample
             if (state.mode !== 'single') {
                 state.mode = 'single';
                 el.btnModeSingle.classList.add('active');
@@ -385,7 +467,6 @@ document.addEventListener('DOMContentLoaded', () => {
             el.fileListContainer.appendChild(card);
         });
 
-        // Bind remove actions
         el.fileListContainer.querySelectorAll('.btn-remove-file').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -393,7 +474,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 printLog(`移除了文件: ${state.selectedFiles[index].name}`, 'info');
                 state.selectedFiles.splice(index, 1);
                 
-                // Clear presets active state if empty
                 if (state.selectedFiles.length === 0) {
                     el.sampleCards.forEach(c => c.classList.remove('active'));
                     state.activeSampleId = null;
@@ -419,43 +499,324 @@ document.addEventListener('DOMContentLoaded', () => {
         else if (viewName === 'batch') el.viewBatch.style.display = 'flex';
     }
 
-    // Start Detection Execution
+    // Base64 Helpers
+    function fileToBase64(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = () => {
+                const base64String = reader.result.split(',')[1];
+                resolve(base64String);
+            };
+            reader.onerror = error => reject(error);
+        });
+    }
+
+    async function sampleUrlToBase64(url) {
+        try {
+            const response = await fetch(url);
+            const blob = await response.blob();
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(blob);
+                reader.onload = () => {
+                    const base64String = reader.result.split(',')[1];
+                    resolve(base64String);
+                };
+                reader.onerror = error => reject(error);
+            });
+        } catch (err) {
+            throw new Error(`无法获取内置图片并转换: ${err.message}`);
+        }
+    }
+
+    // Trigger Detection Execution
     el.btnStartDetect.addEventListener('click', () => {
         if (state.selectedFiles.length === 0) return;
 
+        const hasKey = state.geminiApiKey.trim() !== '';
+
         if (state.mode === 'single') {
-            runSingleDetection(state.selectedFiles[0]);
+            if (hasKey) {
+                runGeminiSingleDetection(state.selectedFiles[0]);
+            } else {
+                printLog('未检测到 Gemini API Key，系统自动切换为本地 YOLO 算法模拟检测。', 'warn');
+                runYoloSingleDetection(state.selectedFiles[0]);
+            }
         } else {
-            runBatchDetection(state.selectedFiles);
+            if (hasKey) {
+                runGeminiBatchDetection(state.selectedFiles);
+            } else {
+                printLog('未检测到 Gemini API Key，系统自动切换为本地 YOLO 算法模拟检测。', 'warn');
+                runYoloBatchDetection(state.selectedFiles);
+            }
         }
     });
 
     // ==========================================
-    // SINGLE DETECTION WORKFLOW
+    // REAL GEMINI DETECTION (SINGLE IMAGE)
     // ==========================================
-    function runSingleDetection(file) {
+    async function runGeminiSingleDetection(file) {
+        showView('loading');
+        el.loadingBar.style.width = '10%';
+        el.loadingPercent.innerText = '10% Completed';
+        
+        const activeModel = getActiveModelName();
+        el.loadingText.innerText = `正在读取图像，序列化为数据张量...`;
+        printLog(`[Gemini 检测启动] 选择模型: ${activeModel}, 开始处理: ${file.name}...`, 'info');
+
+        try {
+            // 1. Convert to Base64
+            let base64Data = '';
+            if (file.isMockSample) {
+                base64Data = await sampleUrlToBase64(file.src);
+            } else {
+                base64Data = await fileToBase64(file);
+            }
+
+            el.loadingBar.style.width = '35%';
+            el.loadingPercent.innerText = '35% Completed';
+            el.loadingText.innerText = `正在发送多模态数据至 Google Gemini 平台...`;
+            printLog(`已将图像成功转换为 Base64。正在发起 API 请求到 ${activeModel}...`, 'info');
+
+            // 2. Build request parameters
+            const apiKey = state.geminiApiKey.trim();
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${activeModel}:generateContent?key=${apiKey}`;
+            
+            const promptText = `
+Analyze this concrete surface image. Detect all structural cracks.
+For each crack found, return:
+1. A bounding box 'box_2d' containing [ymin, xmin, ymax, xmax], with values normalized to 0-1000 (integers).
+2. A list of coordinates 'points' representing the path of the crack from start to end, normalized to 0-1000 (x, y coordinates). Provide at least 5-10 points per crack to follow its contour.
+3. An estimated maximum width of the crack in pixels ('width_px').
+4. An estimated length of the crack in pixels ('length_px').
+
+Return ONLY a JSON array of objects. DO NOT wrap it in markdown code blocks or add text. Here is the schema:
+[
+  {
+    "id": number,
+    "box_2d": [ymin, xmin, ymax, xmax],
+    "points": [[x1, y1], [x2, y2], ...],
+    "width_px": number,
+    "length_px": number
+  }
+]
+`;
+
+            const requestBody = {
+                contents: [
+                    {
+                        parts: [
+                            { text: promptText },
+                            {
+                                inlineData: {
+                                    mimeType: file.type || 'image/png',
+                                    data: base64Data
+                                }
+                            }
+                        ]
+                    }
+                ],
+                generationConfig: {
+                    responseMimeType: "application/json"
+                }
+            };
+
+            const startTime = performance.now();
+            
+            // 3. Fetch API
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(requestBody)
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                const errMsg = errorData.error?.message || `HTTP ${response.status}`;
+                throw new Error(errMsg);
+            }
+
+            const resJson = await response.json();
+            const duration = ((performance.now() - startTime) / 1000).toFixed(2);
+            
+            el.loadingBar.style.width = '80%';
+            el.loadingPercent.innerText = '80% Completed';
+            el.loadingText.innerText = `解析 Gemini 结构化响应数据中...`;
+            printLog(`API 请求成功，用时 ${duration}s。开始解析返回的 JSON 数据...`, 'info');
+
+            // 4. Parse Structured output
+            const responseText = resJson.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (!responseText) {
+                throw new Error("模型未返回有效的内容部分。");
+            }
+
+            // Clean markdown blocks if present
+            let cleanText = responseText.trim();
+            if (cleanText.startsWith('```json')) {
+                cleanText = cleanText.substring(7);
+            } else if (cleanText.startsWith('```')) {
+                cleanText = cleanText.substring(3);
+            }
+            if (cleanText.endsWith('```')) {
+                cleanText = cleanText.substring(0, cleanText.length - 3);
+            }
+            cleanText = cleanText.trim();
+
+            const detectedCracks = JSON.parse(cleanText);
+            if (!Array.isArray(detectedCracks)) {
+                throw new Error("返回结果非标准的 JSON 数组格式。");
+            }
+
+            el.loadingBar.style.width = '100%';
+            el.loadingPercent.innerText = '100% Completed';
+            
+            // 5. Assemble results
+            assembleGeminiResult(file, detectedCracks);
+
+        } catch (error) {
+            printLog(`Gemini API 检测失败: ${error.message}`, 'error');
+            printLog('系统将自动尝试切换为本地 YOLO 算法模拟检测，以确保演示顺利运行...', 'warn');
+            
+            // Fallback to YOLO
+            setTimeout(() => {
+                runYoloSingleDetection(file);
+            }, 1000);
+        }
+    }
+
+    function assembleGeminiResult(file, rawCracks) {
+        const projectDetails = {
+            name: el.inputProjName.value || '桥梁裂纹检测项目',
+            bridge: el.inputBridgeName.value || '厦门大桥',
+            location: el.inputLocation.value || '主梁跨中段',
+            inspector: el.inputInspector.value || '林工',
+            gsd: state.gsd
+        };
+
+        // Map raw coordinates to our schema
+        const cracks = rawCracks.map((cr, idx) => {
+            const ymin = cr.box_2d[0];
+            const xmin = cr.box_2d[1];
+            const ymax = cr.box_2d[2];
+            const xmax = cr.box_2d[3];
+            
+            const box = {
+                x: xmin,
+                y: ymin,
+                w: xmax - xmin,
+                h: ymax - ymin
+            };
+
+            const points = cr.points.map(pt => ({ x: pt[0], y: pt[1] }));
+            
+            // Calculate mm parameters from pixel counts using GSD
+            const widthMm = parseFloat((cr.width_px * state.gsd).toFixed(2));
+            const avgWidthMm = parseFloat((cr.width_px * 0.72 * state.gsd).toFixed(2));
+            const lengthMm = parseFloat((cr.length_px * state.gsd).toFixed(1));
+
+            return {
+                id: cr.id || (idx + 1),
+                points,
+                box,
+                widthMm,
+                avgWidthMm,
+                lengthMm
+            };
+        });
+
+        // Calculations
+        const count = cracks.length;
+        if (count === 0) {
+            // Render no cracks view
+            state.currentDetection = {
+                fileName: file.name,
+                fileSrc: file.isMockSample ? file.src : URL.createObjectURL(file),
+                cracks: [],
+                stats: { count: 0, maxWidth: 0, avgWidth: 0, maxLength: 0, riskLevel: 'Low', riskDesc: '正常', riskClass: 'risk-low' },
+                project: projectDetails
+            };
+            
+            el.metricCount.innerText = `0 条`;
+            el.metricMaxWidth.innerText = `0.00 mm`;
+            el.metricAvgWidth.innerText = `0.00 mm`;
+            el.metricMaxLength.innerText = `0.0 mm`;
+            el.metricRisk.innerText = '正常';
+            el.metricRisk.className = 'risk-badge risk-low';
+            
+            printLog(`[Gemini 检测完毕] 未发现明显裂纹特征，结构指标正常。`, 'success');
+        } else {
+            const maxWidth = Math.max(...cracks.map(c => c.widthMm));
+            const avgWidth = parseFloat((cracks.reduce((acc, c) => acc + c.avgWidthMm, 0) / count).toFixed(2));
+            const maxLength = Math.max(...cracks.map(c => c.lengthMm));
+
+            let riskLevel = 'Low';
+            let riskDesc = '低风险';
+            let riskClass = 'risk-low';
+            
+            if (maxWidth >= 1.5) {
+                riskLevel = 'High';
+                riskDesc = '高风险 (即刻处理)';
+                riskClass = 'risk-high';
+            } else if (maxWidth >= 0.2) {
+                riskLevel = 'Medium';
+                riskDesc = '中风险 (常规养护)';
+                riskClass = 'risk-medium';
+            }
+
+            state.currentDetection = {
+                fileName: file.name,
+                fileSrc: file.isMockSample ? file.src : URL.createObjectURL(file),
+                cracks,
+                stats: { count, maxWidth, avgWidth, maxLength, riskLevel, riskDesc, riskClass },
+                project: projectDetails
+            };
+
+            // UI Metrics
+            el.metricCount.innerText = `${count} 条`;
+            el.metricMaxWidth.innerText = `${maxWidth.toFixed(2)} mm`;
+            el.metricAvgWidth.innerText = `${avgWidth.toFixed(2)} mm`;
+            el.metricMaxLength.innerText = `${maxLength.toFixed(1)} mm`;
+            el.metricRisk.innerText = riskDesc;
+            el.metricRisk.className = `risk-badge ${riskClass}`;
+
+            el.metricGsd.innerText = `${state.gsd} mm/px`;
+            el.metricBridge.innerText = projectDetails.bridge;
+            el.metricLocation.innerText = projectDetails.location;
+
+            printLog(`[Gemini 检测完毕] 共识别裂缝: ${count}条, 最大宽度: ${maxWidth.toFixed(2)}mm, 安全评级: ${riskDesc}`, 'success');
+        }
+
+        renderResultCanvas();
+        showView('result');
+    }
+
+    // ==========================================
+    // LOCAL YOLO SIMULATION (SINGLE IMAGE)
+    // ==========================================
+    function runYoloSingleDetection(file) {
         showView('loading');
         
-        // Reset loading progress
         let progress = 0;
         el.loadingBar.style.width = '0%';
         el.loadingPercent.innerText = '0% Completed';
         
         const steps = [
-            { threshold: 20, text: '正在装载 YOLOv8 深度学习网络模型...', log: 'Loading model weights: yolov8n_crack.pt...', delay: 500, type: 'info' },
-            { threshold: 50, text: '正在载入图像，映射像素尺寸比例...', log: `Applying calibration GSD: ${state.gsd} mm/pixel. Initializing tensors...`, delay: 800, type: 'info' },
-            { threshold: 85, text: 'YOLO 目标检测核心正在搜索桥梁裂缝特征...', log: 'YOLO layers inferencing... Feature extraction complete. Matching bounding boxes...', delay: 1000, type: 'info' },
-            { threshold: 100, text: '正在测量几何形态，生成安全度评估报告...', log: 'Geometric measurements extracted. Writing logs, writing summary structural index...', delay: 600, type: 'success' }
+            { threshold: 20, text: '正在装载 YOLOv8 深度学习网络模型...', log: 'Loading model weights: yolov8n_crack.pt...', delay: 400, type: 'info' },
+            { threshold: 50, text: '正在载入图像，映射像素尺寸比例...', log: `Applying GSD: ${state.gsd} mm/pixel. Preparing tensor buffers...`, delay: 500, type: 'info' },
+            { threshold: 85, text: 'YOLO 目标检测核心正在分析图像病害区域...', log: 'YOLO layer inference running... Extracted crack paths. Fitting boxes...', delay: 600, type: 'info' },
+            { threshold: 100, text: '正在测量几何形态，生成安全度评估报告...', log: 'Completed pixel size calculations. Compiling structure indices...', delay: 400, type: 'success' }
         ];
 
         let stepIdx = 0;
         
         function processSteps() {
             if (stepIdx >= steps.length) {
-                // Done! Assemble results and display
                 setTimeout(() => {
-                    assembleSingleResult(file);
-                }, 300);
+                    assembleYoloSingleResult(file);
+                }, 200);
                 return;
             }
 
@@ -463,7 +824,6 @@ document.addEventListener('DOMContentLoaded', () => {
             el.loadingText.innerText = step.text;
             printLog(step.log, step.type);
 
-            // Increment progress slowly during delay
             let startVal = progress;
             let endVal = step.threshold;
             let currentDelay = step.delay;
@@ -489,7 +849,8 @@ document.addEventListener('DOMContentLoaded', () => {
         processSteps();
     }
 
-    function assembleSingleResult(file) {
+    function assembleYoloSingleResult(file) {
+        // Fallback mockup loader
         const sampleId = file.isMockSample ? file.sampleId : 'custom';
         const projectDetails = {
             name: el.inputProjName.value || '桥梁裂纹检测项目',
@@ -499,10 +860,8 @@ document.addEventListener('DOMContentLoaded', () => {
             gsd: state.gsd
         };
 
-        // Simulated Detected Cracks details
         let cracks = [];
         if (sampleId !== 'custom') {
-            // Load preset coordinate systems
             const presetData = sampleCracksData[sampleId];
             cracks = presetData.map(cr => {
                 const lengthPx = calculatePolylineLength(cr.points);
@@ -519,8 +878,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 };
             });
         } else {
-            // Generate procedural cracks based on custom uploaded image size
-            // For simple visualization, we define 2 realistic cracks
+            // Procedural cracks
             cracks = [
                 {
                     id: 1,
@@ -546,13 +904,11 @@ document.addEventListener('DOMContentLoaded', () => {
             ];
         }
 
-        // Calculate summary statistics
         const count = cracks.length;
         const maxWidth = Math.max(...cracks.map(c => c.widthMm));
         const avgWidth = parseFloat((cracks.reduce((acc, c) => acc + c.avgWidthMm, 0) / count).toFixed(2));
         const maxLength = Math.max(...cracks.map(c => c.lengthMm));
 
-        // Evaluate Risk Assessment (JTG standard simulation)
         let riskLevel = 'Low';
         let riskDesc = '低风险';
         let riskClass = 'risk-low';
@@ -587,9 +943,8 @@ document.addEventListener('DOMContentLoaded', () => {
         el.metricBridge.innerText = projectDetails.bridge;
         el.metricLocation.innerText = projectDetails.location;
 
-        printLog(`[检测完毕] 共识别裂缝: ${count}条, 最大宽度: ${maxWidth}mm, 最大长度: ${maxLength}mm, 结构安全级别: ${riskDesc}`, 'success');
+        printLog(`[YOLO模拟完毕] 共识别裂缝: ${count}条, 最大宽度: ${maxWidth.toFixed(2)}mm, 结构安全评级: ${riskDesc}`, 'success');
 
-        // Draw Canvas UI
         renderResultCanvas();
         showView('result');
     }
@@ -604,7 +959,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return length;
     }
 
-    // Result Canvas Rendering
+    // Draw Visual Canvas Annotations
     function renderResultCanvas() {
         const det = state.currentDetection;
         if (!det) return;
@@ -615,14 +970,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const canvas = el.resultCanvas;
             const ctx = canvas.getContext('2d');
 
-            // Maintain native image resolution
             canvas.width = img.naturalWidth;
             canvas.height = img.naturalHeight;
-
-            // Draw Base Image
             ctx.drawImage(img, 0, 0);
 
-            // Draw annotations if visible and "compare original" is false
             if (state.showAnnotations) {
                 det.cracks.forEach((crack) => {
                     const boxX = (crack.box.x / 1000) * canvas.width;
@@ -630,26 +981,25 @@ document.addEventListener('DOMContentLoaded', () => {
                     const boxW = (crack.box.w / 1000) * canvas.width;
                     const boxH = (crack.box.h / 1000) * canvas.height;
 
-                    // 1. Draw Bounding Box (YOLO style)
-                    ctx.strokeStyle = '#ef4444'; // red box
+                    // 1. Bounding Box
+                    ctx.strokeStyle = '#ef4444';
                     ctx.lineWidth = Math.max(3, canvas.width / 350);
-                    ctx.setLineDash([]);
                     ctx.strokeRect(boxX, boxY, boxW, boxH);
 
-                    // 2. Draw Label Tag Header
+                    // 2. Tag Header
                     ctx.fillStyle = '#ef4444';
                     const tagH = Math.max(22, canvas.height / 35);
                     const tagW = Math.max(160, canvas.width / 5);
                     ctx.fillRect(boxX, boxY - tagH, tagW, tagH);
 
-                    // Text Label in Tag
+                    // Text
                     ctx.fillStyle = '#ffffff';
                     ctx.font = `bold ${Math.max(12, canvas.height / 50)}px sans-serif`;
                     ctx.textBaseline = 'middle';
                     ctx.fillText(` [${crack.id}] W:${crack.widthMm.toFixed(2)}mm L:${crack.lengthMm.toFixed(0)}mm`, boxX + 6, boxY - tagH/2);
 
-                    // 3. Draw Path Overlay
-                    ctx.strokeStyle = '#22c55e'; // emerald green line for crack path
+                    // 3. Crack path polyline overlay
+                    ctx.strokeStyle = '#22c55e';
                     ctx.lineWidth = Math.max(4, canvas.width / 220);
                     ctx.lineCap = 'round';
                     ctx.lineJoin = 'round';
@@ -663,7 +1013,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     });
                     ctx.stroke();
 
-                    // Optional path boundary glow
+                    // Glow line
                     ctx.strokeStyle = 'rgba(34, 197, 94, 0.4)';
                     ctx.lineWidth = Math.max(8, canvas.width / 110);
                     ctx.stroke();
@@ -672,7 +1022,7 @@ document.addEventListener('DOMContentLoaded', () => {
         };
     }
 
-    // Toggle Labels & Annotation displays
+    // Toggle annotation layers
     el.btnToggleCrack.addEventListener('click', () => {
         state.showAnnotations = !state.showAnnotations;
         if (state.showAnnotations) {
@@ -704,15 +1054,14 @@ document.addEventListener('DOMContentLoaded', () => {
         renderResultCanvas();
     });
 
-    // Re-detect button
     el.btnReDetect.addEventListener('click', () => {
         showView('welcome');
     });
 
     // ==========================================
-    // BATCH DETECTION WORKFLOW
+    // BATCH DETECTION (REAL GEMINI)
     // ==========================================
-    function runBatchDetection(files) {
+    async function runGeminiBatchDetection(files) {
         showView('batch');
         el.batchTableBody.innerHTML = '';
         el.btnExportBatchExcel.disabled = true;
@@ -722,7 +1071,165 @@ document.addEventListener('DOMContentLoaded', () => {
             fileName: file.name,
             size: file.size,
             fileObject: file,
-            status: 'pending', // 'pending' | 'running' | 'completed'
+            status: 'pending',
+            cracksCount: 0,
+            maxWidth: 0.0,
+            avgWidth: 0.0,
+            length: 0.0,
+            risk: 'Low',
+            riskDesc: '正常'
+        }));
+
+        state.isProcessingBatch = true;
+        updateBatchQueueDisplay();
+        
+        const activeModel = getActiveModelName();
+        printLog(`[Gemini 批量检测启动] 开始分析共 ${files.length} 张图片...`, 'info');
+
+        for (let fileIdx = 0; fileIdx < state.batchQueue.length; fileIdx++) {
+            const item = state.batchQueue[fileIdx];
+            item.status = 'running';
+            updateBatchQueueDisplay();
+            printLog(`[${fileIdx + 1}/${files.length}] 正在使用 Gemini API 分析 ${item.fileName}...`, 'info');
+
+            try {
+                // 1. Base64
+                const base64Data = await fileToBase64(item.fileObject);
+
+                // 2. Query Gemini
+                const apiKey = state.geminiApiKey.trim();
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/${activeModel}:generateContent?key=${apiKey}`;
+                
+                const promptText = `
+Analyze this concrete surface image. Detect all structural cracks.
+Return ONLY a JSON array of objects, each detailing detected crack coordinates and pixel sizing:
+[
+  {
+    "id": number,
+    "box_2d": [ymin, xmin, ymax, xmax],
+    "points": [[x1, y1], [x2, y2], ...],
+    "width_px": number,
+    "length_px": number
+  }
+]
+`;
+
+                const requestBody = {
+                    contents: [
+                        {
+                            parts: [
+                                { text: promptText },
+                                {
+                                    inlineData: {
+                                        mimeType: item.fileObject.type || 'image/png',
+                                        data: base64Data
+                                    }
+                                }
+                            ]
+                        }
+                    ],
+                    generationConfig: {
+                        responseMimeType: "application/json"
+                    }
+                };
+
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(requestBody)
+                });
+
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+                const resJson = await response.json();
+                const responseText = resJson.candidates?.[0]?.content?.parts?.[0]?.text;
+                if (!responseText) throw new Error("API response empty.");
+
+                let cleanText = responseText.trim();
+                if (cleanText.startsWith('```json')) cleanText = cleanText.substring(7);
+                else if (cleanText.startsWith('```')) cleanText = cleanText.substring(3);
+                if (cleanText.endsWith('```')) cleanText = cleanText.substring(0, cleanText.length - 3);
+                cleanText = cleanText.trim();
+
+                const detected = JSON.parse(cleanText);
+
+                // 3. Map
+                item.status = 'completed';
+                item.cracksCount = detected.length;
+                if (detected.length > 0) {
+                    item.maxWidth = Math.max(...detected.map(d => parseFloat((d.width_px * state.gsd).toFixed(2))));
+                    item.avgWidth = parseFloat((detected.reduce((acc, d) => acc + (d.width_px * 0.72 * state.gsd), 0) / detected.length).toFixed(2));
+                    item.length = Math.max(...detected.map(d => parseFloat((d.length_px * state.gsd).toFixed(1))));
+                } else {
+                    item.maxWidth = 0;
+                    item.avgWidth = 0;
+                    item.length = 0;
+                }
+
+                if (item.maxWidth >= 1.5) {
+                    item.risk = 'High';
+                    item.riskDesc = '高风险';
+                } else if (item.maxWidth >= 0.2) {
+                    item.risk = 'Medium';
+                    item.riskDesc = '中风险';
+                } else {
+                    item.risk = 'Low';
+                    item.riskDesc = '正常';
+                }
+
+                printLog(`[${fileIdx + 1}/${files.length}] Gemini 完成 ${item.fileName}: 发现 ${item.cracksCount}条裂纹, MaxW = ${item.maxWidth.toFixed(2)}mm`, 'success');
+
+            } catch (err) {
+                // Fallback to simulated item on API failure
+                printLog(`[${fileIdx + 1}/${files.length}] Gemini 接口失败 (${err.message})。降级为模拟分析...`, 'warn');
+                
+                const crackCount = Math.floor(Math.random() * 4) + 1;
+                let maxWidth = parseFloat(((Math.random() * 4 + 1.2) * state.gsd).toFixed(2));
+                let totalLength = parseFloat(((Math.random() * 800 + 350) * state.gsd).toFixed(1));
+                let avgWidth = parseFloat((maxWidth * 0.68).toFixed(2));
+
+                item.status = 'completed';
+                item.cracksCount = crackCount;
+                item.maxWidth = maxWidth;
+                item.avgWidth = avgWidth;
+                item.length = totalLength;
+                
+                if (maxWidth >= 1.5) {
+                    item.risk = 'High';
+                    item.riskDesc = '高风险';
+                } else if (maxWidth >= 0.2) {
+                    item.risk = 'Medium';
+                    item.riskDesc = '中风险';
+                } else {
+                    item.risk = 'Low';
+                    item.riskDesc = '正常';
+                }
+            }
+
+            updateBatchSummaryCards();
+            updateBatchQueueDisplay();
+        }
+
+        state.isProcessingBatch = false;
+        el.btnExportBatchExcel.disabled = false;
+        printLog(`[Gemini 批量任务完成] 所有图片分析完毕。`, 'success');
+        appendNewHistoryReport(true);
+    }
+
+    // ==========================================
+    // LOCAL YOLO SIMULATION (BATCH IMAGES)
+    // ==========================================
+    function runYoloBatchDetection(files) {
+        showView('batch');
+        el.batchTableBody.innerHTML = '';
+        el.btnExportBatchExcel.disabled = true;
+        
+        state.batchQueue = files.map((file, idx) => ({
+            id: idx + 1,
+            fileName: file.name,
+            size: file.size,
+            fileObject: file,
+            status: 'pending',
             cracksCount: 0,
             maxWidth: 0.0,
             avgWidth: 0.0,
@@ -735,14 +1242,13 @@ document.addEventListener('DOMContentLoaded', () => {
         updateBatchQueueDisplay();
         
         let fileIdx = 0;
-        printLog(`[批量任务启动] 开始顺序分析 ${files.length} 张桥梁图片...`, 'info');
+        printLog(`[YOLO 批量任务启动] 顺序处理 ${files.length} 张图片...`, 'info');
 
         function processNextBatchFile() {
             if (fileIdx >= state.batchQueue.length) {
-                // All batch processes completed!
                 state.isProcessingBatch = false;
                 el.btnExportBatchExcel.disabled = false;
-                printLog(`[批量任务完成] 全部 ${state.batchQueue.length} 张图片检测完成，结果报表已生成！`, 'success');
+                printLog(`[YOLO 批量任务完成] ${state.batchQueue.length} 张图片全部检测完毕。`, 'success');
                 appendNewHistoryReport(true);
                 return;
             }
@@ -750,13 +1256,11 @@ document.addEventListener('DOMContentLoaded', () => {
             const item = state.batchQueue[fileIdx];
             item.status = 'running';
             updateBatchQueueDisplay();
-            printLog(`[${fileIdx + 1}/${files.length}] 正在使用 YOLOv8 分析 ${item.fileName}...`, 'info');
+            printLog(`[${fileIdx + 1}/${files.length}] 正在使用 YOLO 模拟分析 ${item.fileName}...`, 'info');
 
-            // Simulate detection time per file
             setTimeout(() => {
-                // Generate simulated parameters
-                const crackCount = Math.floor(Math.random() * 4) + 1; // 1 to 4 cracks
-                let maxWidth = parseFloat(((Math.random() * 4 + 1.2) * state.gsd).toFixed(2)); // widths
+                const crackCount = Math.floor(Math.random() * 4) + 1;
+                let maxWidth = parseFloat(((Math.random() * 4 + 1.2) * state.gsd).toFixed(2));
                 let totalLength = parseFloat(((Math.random() * 800 + 350) * state.gsd).toFixed(1));
                 let avgWidth = parseFloat((maxWidth * 0.68).toFixed(2));
 
@@ -778,15 +1282,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 item.risk = risk;
                 item.riskDesc = riskDesc;
 
-                printLog(`[${fileIdx + 1}/${files.length}] 完成 ${item.fileName} 分析: 找到 ${crackCount}条裂纹, MaxW = ${maxWidth}mm`, 'success');
+                printLog(`[${fileIdx + 1}/${files.length}] 完成 ${item.fileName}: 识别裂纹数 = ${crackCount}, MaxW = ${maxWidth}mm`, 'success');
                 
-                // Update cumulative batch metrics card
                 updateBatchSummaryCards();
-                
                 updateBatchQueueDisplay();
                 fileIdx++;
                 processNextBatchFile();
-            }, 1200);
+            }, 1000);
         }
 
         processNextBatchFile();
@@ -831,16 +1333,14 @@ document.addEventListener('DOMContentLoaded', () => {
             el.batchTableBody.appendChild(tr);
         });
 
-        // Add visual viewer binders to batch table rows
         el.batchTableBody.querySelectorAll('.btn-item-inspect').forEach(btn => {
             btn.addEventListener('click', () => {
                 const idx = parseInt(btn.getAttribute('data-idx'));
                 const batchItem = state.batchQueue[idx];
                 
-                // Mock visual load into Single View
+                // Load into single viewer
                 const fileRef = batchItem.fileObject;
-                // Pre-generate detection detail for single mode viewer
-                assembleSingleResult({
+                assembleYoloSingleResult({
                     name: batchItem.fileName,
                     size: batchItem.size,
                     type: 'image/png',
@@ -848,7 +1348,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     src: URL.createObjectURL(fileRef)
                 });
                 
-                // Show toast logs
                 printLog(`载入批量图像结果以供可视化查看: ${batchItem.fileName}`, 'info');
             });
         });
@@ -871,10 +1370,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ==========================================
-    // EXCEL / CSV REPORT EXPORT SYSTEM
+    // EXCEL / CSV REPORT DOWNLOADS
     // ==========================================
     function downloadCSV(csvContent, filename) {
-        // UTF-8 with BOM (\uFEFF) to make sure Chinese characters display correctly in MS Excel
         const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
@@ -886,7 +1384,7 @@ document.addEventListener('DOMContentLoaded', () => {
         printLog(`成功下载 Excel 报表: ${filename}`, 'success');
     }
 
-    // Export Single Detection Report
+    // Export Single Report
     el.btnExportExcel.addEventListener('click', () => {
         const det = state.currentDetection;
         if (!det) return;
@@ -927,7 +1425,7 @@ document.addEventListener('DOMContentLoaded', () => {
         appendNewHistoryReport(false, filename, stats.count, stats.maxWidth);
     });
 
-    // Export Batch Merged Detection Report
+    // Export Batch Merged Report
     el.btnExportBatchExcel.addEventListener('click', () => {
         if (state.batchQueue.length === 0) return;
 
@@ -969,7 +1467,7 @@ document.addEventListener('DOMContentLoaded', () => {
         downloadCSV(csv, filename);
     });
 
-    // History List Appending
+    // History Downloads
     function appendNewHistoryReport(isBatch, customFilename = null, cracks = 3, maxW = 1.25) {
         const timeStamp = new Date().toISOString().replace(/[-T:]/g, '').split('.')[0];
         const dateStr = new Date().toLocaleString();
@@ -995,8 +1493,6 @@ document.addEventListener('DOMContentLoaded', () => {
         };
 
         state.historyReports.unshift(newReport);
-        
-        // Render updated history reports sidebar list
         renderHistoryReportsList();
     }
 
@@ -1018,7 +1514,6 @@ document.addEventListener('DOMContentLoaded', () => {
             el.historyReportsList.appendChild(div);
         });
 
-        // Rebind click events to download reports
         el.historyReportsList.querySelectorAll('.btn-download-report').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -1031,7 +1526,6 @@ document.addEventListener('DOMContentLoaded', () => {
         lucide.createIcons();
     }
 
-    // Trigger downloading of the preset static reports on right sidebar
     function triggerMockHistoryDownload(filename) {
         const proj = {
             name: el.inputProjName.value || '桥梁裂纹检测项目',
@@ -1070,7 +1564,6 @@ document.addEventListener('DOMContentLoaded', () => {
         downloadCSV(csv, filename);
     }
 
-    // Trigger download for the 3 hardcoded starting reports
     el.historyReportsList.querySelectorAll('.btn-download-report').forEach(btn => {
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -1080,9 +1573,10 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // Initialize application settings on boot
+    // Boot Initialization
     initAccordions();
     initLogger();
-    recalculateGSD(); // Set GSD initially
-    el.btnStartDetect.disabled = true; // Disable until image is loaded
+    recalculateGSD();
+    loadGeminiSettings(); // Load keys and selections
+    el.btnStartDetect.disabled = true;
 });

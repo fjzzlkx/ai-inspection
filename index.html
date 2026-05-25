@@ -27,9 +27,9 @@
             </div>
         </div>
         <div class="header-right">
-            <div class="status-pill">
-                <span class="status-dot"></span>
-                <span>Yolo 检测器就绪</span>
+            <div class="status-pill" id="header-status-pill">
+                <span class="status-dot" id="header-status-dot"></span>
+                <span id="header-status-text">YOLO 检测器就绪 (模拟)</span>
             </div>
             <div class="version">v1.0.0</div>
         </div>
@@ -74,6 +74,38 @@
                 <!-- File preview list -->
                 <div id="file-list-container" style="display: none; display: flex; flex-direction: column; gap: 8px;">
                     <!-- Dynamically populated files -->
+                </div>
+            </div>
+
+            <!-- Gemini API Settings Accordion -->
+            <div class="sidebar-card">
+                <div class="accordion-header" id="acc-header-gemini">
+                    <span>Gemini API 设置</span>
+                    <i data-lucide="chevron-down" style="width: 14px; height: 14px;"></i>
+                </div>
+                <div class="accordion-content" id="acc-content-gemini">
+                    <div class="form-group">
+                        <label for="input-api-key">Gemini API Key</label>
+                        <input type="password" id="input-api-key" class="form-input" placeholder="输入 API Key 开启真实检测">
+                        <div class="form-subtext">密钥仅保存在本地，绝不向外泄露</div>
+                    </div>
+                    <div class="form-group">
+                        <label for="select-model">模型选择</label>
+                        <select id="select-model" class="form-input" style="padding: 8px;">
+                            <option value="gemini-2.5-flash">gemini-2.5-flash (推荐高速)</option>
+                            <option value="gemini-2.5-pro">gemini-2.5-pro (高精度)</option>
+                            <option value="gemini-3.5-flash">gemini-3.5-flash (最新)</option>
+                            <option value="gemini-3.5-pro">gemini-3.5-pro (最新旗舰)</option>
+                            <option value="custom">自定义模型 ID...</option>
+                        </select>
+                    </div>
+                    <div class="form-group" id="group-custom-model" style="display: none;">
+                        <label for="input-custom-model">自定义模型 ID</label>
+                        <input type="text" id="input-custom-model" class="form-input" placeholder="如 gemini-3.5-flash">
+                    </div>
+                    <div class="form-subtext" id="gemini-status-text" style="color: var(--text-muted); font-weight: 500;">
+                        当前模式：本地 YOLO 模拟检测
+                    </div>
                 </div>
             </div>
 
