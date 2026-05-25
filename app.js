@@ -8,33 +8,29 @@ document.addEventListener('DOMContentLoaded', () => {
             name: 'Google Gemini',
             defaultBaseUrl: '',
             models: [
-                { value: 'gemini-3.1-flash', text: 'gemini-3.1-flash (推荐高速)' },
-                { value: 'gemini-3.1-pro', text: 'gemini-3.1-pro (旗舰高精)' },
-                { value: 'gemini-2.5-flash', text: 'gemini-2.5-flash' },
-                { value: 'gemini-2.5-pro', text: 'gemini-2.5-pro' },
+                { value: 'gemini-3.1-pro', text: 'gemini-3.1-pro' },
+                { value: 'gemini-3.5-flash', text: 'gemini-3.5-flash' },
                 { value: 'custom', text: '自定义模型 ID...' }
             ],
-            defaultModel: 'gemini-3.1-flash'
+            defaultModel: 'gemini-3.1-pro'
         },
         deepseek: {
             name: 'DeepSeek',
             defaultBaseUrl: 'https://api.deepseek.com/v1',
             models: [
-                { value: 'deepseek-chat', text: 'deepseek-chat (V3 - 纯文本模型)' },
-                { value: 'deepseek-reasoner', text: 'deepseek-reasoner (R1 - 纯文本模型)' },
-                { value: 'custom', text: '自定义模型 ID (可配第三方视觉节点)...' }
+                { value: 'DeepSeek-V4-pro', text: 'DeepSeek-V4-pro' },
+                { value: 'custom', text: '自定义模型 ID...' }
             ],
-            defaultModel: 'deepseek-chat'
+            defaultModel: 'DeepSeek-V4-pro'
         },
         minimax: {
             name: 'MiniMax',
             defaultBaseUrl: 'https://api.minimax.chat/v1',
             models: [
-                { value: 'abab6.5s-chat', text: 'abab6.5s-chat (多模态/支持视觉)' },
-                { value: 'abab7-chat', text: 'abab7-chat (支持文本)' },
+                { value: 'MiniMax-M2.7', text: 'MiniMax-M2.7' },
                 { value: 'custom', text: '自定义模型 ID...' }
             ],
-            defaultModel: 'abab6.5s-chat'
+            defaultModel: 'MiniMax-M2.7'
         },
         custom: {
             name: 'OpenAI 兼容',
