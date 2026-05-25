@@ -1549,13 +1549,13 @@ Return ONLY a JSON array of objects. DO NOT wrap it in markdown code blocks or a
                 const batchItem = state.batchQueue[idx];
                 
                 const fileRef = batchItem.fileObject;
-                assembleYoloSingleResult({
+                assembleSimulatedSingleResult({
                     name: batchItem.fileName,
                     size: batchItem.size,
                     type: 'image/png',
                     isMockSample: false,
                     src: URL.createObjectURL(fileRef)
-                });
+                }, getActiveModelName(), state.provider);
                 
                 printLog(`载入批量图像结果以供可视化查看: ${batchItem.fileName}`, 'info');
             });
