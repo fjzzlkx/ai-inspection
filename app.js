@@ -2,6 +2,50 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initialize Lucide Icons
     lucide.createIcons();
 
+    // Provider Presets Configuration
+    const providerPresets = {
+        gemini: {
+            name: 'Google Gemini',
+            defaultBaseUrl: '',
+            models: [
+                { value: 'gemini-3.1-flash', text: 'gemini-3.1-flash (推荐高速)' },
+                { value: 'gemini-3.1-pro', text: 'gemini-3.1-pro (旗舰高精)' },
+                { value: 'gemini-2.5-flash', text: 'gemini-2.5-flash' },
+                { value: 'gemini-2.5-pro', text: 'gemini-2.5-pro' },
+                { value: 'custom', text: '自定义模型 ID...' }
+            ],
+            defaultModel: 'gemini-3.1-flash'
+        },
+        deepseek: {
+            name: 'DeepSeek',
+            defaultBaseUrl: 'https://api.deepseek.com/v1',
+            models: [
+                { value: 'deepseek-chat', text: 'deepseek-chat (V3 - 纯文本模型)' },
+                { value: 'deepseek-reasoner', text: 'deepseek-reasoner (R1 - 纯文本模型)' },
+                { value: 'custom', text: '自定义模型 ID (可配第三方视觉节点)...' }
+            ],
+            defaultModel: 'deepseek-chat'
+        },
+        minimax: {
+            name: 'MiniMax',
+            defaultBaseUrl: 'https://api.minimax.chat/v1',
+            models: [
+                { value: 'abab6.5s-chat', text: 'abab6.5s-chat (多模态/支持视觉)' },
+                { value: 'abab7-chat', text: 'abab7-chat (支持文本)' },
+                { value: 'custom', text: '自定义模型 ID...' }
+            ],
+            defaultModel: 'abab6.5s-chat'
+        },
+        custom: {
+            name: 'OpenAI 兼容',
+            defaultBaseUrl: '',
+            models: [
+                { value: 'custom', text: '自定义模型 ID...' }
+            ],
+            defaultModel: 'custom'
+        }
+    };
+
     // Application State
     const state = {
         mode: 'single', // 'single' | 'batch'
@@ -21,11 +65,19 @@ document.addEventListener('DOMContentLoaded', () => {
         batchQueue: [],
         isProcessingBatch: false,
         
-        // Gemini Configuration
-        geminiApiKey: localStorage.getItem('gemini_api_key') || '',
-        geminiModel: localStorage.getItem('gemini_model') || 'gemini-2.5-flash',
-        geminiCustomModel: localStorage.getItem('gemini_custom_model') || ''
+        // AI Provider Settings
+        provider: localStorage.getItem('ai_provider') || 'gemini'
     };
+
+    // Load provider-specific settings helper
+    function getProviderSetting(provider, key, fallback) {
+        return localStorage.getItem(`ai_${key}_${provider}`) !== null ? 
+            localStorage.getItem(`ai_${key}_${provider}`) : fallback;
+    }
+
+    function setProviderSetting(provider, key, val) {
+        localStorage.setItem(`ai_${key}_${provider}`, val);
+    }
 
     // Predefined Cracks Coordinates (for sample images fallback)
     const sampleCracksData = {
@@ -101,10 +153,13 @@ document.addEventListener('DOMContentLoaded', () => {
         fileInput: document.getElementById('file-input'),
         fileListContainer: document.getElementById('file-list-container'),
         
-        // Gemini API Configuration
+        // AI Platform Configuration
         accHeaderGemini: document.getElementById('acc-header-gemini'),
         accContentGemini: document.getElementById('acc-content-gemini'),
+        selectProvider: document.getElementById('select-provider'),
         inputApiKey: document.getElementById('input-api-key'),
+        groupBaseUrl: document.getElementById('group-base-url'),
+        inputBaseUrl: document.getElementById('input-base-url'),
         selectModel: document.getElementById('select-model'),
         groupCustomModel: document.getElementById('group-custom-model'),
         inputCustomModel: document.getElementById('input-custom-model'),
@@ -248,31 +303,111 @@ document.addEventListener('DOMContentLoaded', () => {
         printLog(`手动输入校准 GSD: ${state.gsd} mm/pixel`, 'info');
     });
 
-    // Gemini API Configurations & LocalStorage Bindings
-    function loadGeminiSettings() {
-        el.inputApiKey.value = state.geminiApiKey;
-        el.selectModel.value = state.geminiModel;
-        el.inputCustomModel.value = state.geminiCustomModel;
-        
-        if (state.geminiModel === 'custom') {
+    // AI Platform Configuration Logic
+    function initAIPlatformSettings() {
+        // Set selected provider
+        el.selectProvider.value = state.provider;
+
+        // Listen for provider changes
+        el.selectProvider.addEventListener('change', () => {
+            state.provider = el.selectProvider.value;
+            localStorage.setItem('ai_provider', state.provider);
+            renderAIInputsForProvider();
+            printLog(`已切换 AI 服务商为: ${providerPresets[state.provider].name}`, 'info');
+        });
+
+        // Event listeners for settings change
+        el.inputApiKey.addEventListener('input', () => {
+            setProviderSetting(state.provider, 'api_key', el.inputApiKey.value);
+            updateAISettingsStatus();
+        });
+
+        el.inputBaseUrl.addEventListener('input', () => {
+            setProviderSetting(state.provider, 'base_url', el.inputBaseUrl.value);
+        });
+
+        el.selectModel.addEventListener('change', () => {
+            const selectedModel = el.selectModel.value;
+            setProviderSetting(state.provider, 'model', selectedModel);
+            
+            if (selectedModel === 'custom') {
+                el.groupCustomModel.style.display = 'block';
+            } else {
+                el.groupCustomModel.style.display = 'none';
+            }
+            updateAISettingsStatus();
+        });
+
+        el.inputCustomModel.addEventListener('input', () => {
+            setProviderSetting(state.provider, 'custom_model', el.inputCustomModel.value);
+            updateAISettingsStatus();
+        });
+
+        // Render inputs initially
+        renderAIInputsForProvider();
+    }
+
+    function renderAIInputsForProvider() {
+        const prov = state.provider;
+        const preset = providerPresets[prov];
+
+        // 1. Show/Hide Base URL
+        if (prov === 'gemini') {
+            el.groupBaseUrl.style.display = 'none';
+        } else {
+            el.groupBaseUrl.style.display = 'block';
+            const savedUrl = getProviderSetting(prov, 'base_url', preset.defaultBaseUrl);
+            el.inputBaseUrl.value = savedUrl;
+        }
+
+        // 2. Populate Model list
+        el.selectModel.innerHTML = '';
+        preset.models.forEach(m => {
+            const opt = document.createElement('option');
+            opt.value = m.value;
+            opt.innerText = m.text;
+            el.selectModel.appendChild(opt);
+        });
+
+        // 3. Load saved settings values
+        const savedKey = getProviderSetting(prov, 'api_key', '');
+        const savedModel = getProviderSetting(prov, 'model', preset.defaultModel);
+        const savedCustomModel = getProviderSetting(prov, 'custom_model', '');
+
+        el.inputApiKey.value = savedKey;
+        el.selectModel.value = savedModel;
+        el.inputCustomModel.value = savedCustomModel;
+
+        // 4. Toggle Custom Model Name view
+        if (savedModel === 'custom') {
             el.groupCustomModel.style.display = 'block';
         } else {
             el.groupCustomModel.style.display = 'none';
         }
-        updateGeminiStatus();
+
+        updateAISettingsStatus();
     }
 
-    function updateGeminiStatus() {
-        const key = state.geminiApiKey.trim();
+    function getActiveModelName() {
+        const prov = state.provider;
+        const savedModel = getProviderSetting(prov, 'model', providerPresets[prov].defaultModel);
+        if (savedModel === 'custom') {
+            return getProviderSetting(prov, 'custom_model', '').trim() || 'custom-model';
+        }
+        return savedModel;
+    }
+
+    function updateAISettingsStatus() {
+        const prov = state.provider;
+        const key = getProviderSetting(prov, 'api_key', '').trim();
         const activeModel = getActiveModelName();
+        const providerName = providerPresets[prov].name;
 
         if (key) {
-            // Gemini mode active
-            el.headerStatusText.innerText = `Gemini AI 检测器已就绪`;
+            // Real API mode active
+            el.headerStatusText.innerText = `${providerName} AI 检测就绪`;
             el.headerStatusDot.style.backgroundColor = 'var(--accent-cyan)';
             el.headerStatusDot.style.boxShadow = '0 0 8px var(--accent-cyan)';
-            
-            // Set dynamic pseudo-element pulse color
             el.headerStatusDot.style.setProperty('--accent-emerald', '#06b6d4');
             
             el.geminiStatusText.innerText = `当前模式：真实 AI 检测 (${activeModel})`;
@@ -282,8 +417,6 @@ document.addEventListener('DOMContentLoaded', () => {
             el.headerStatusText.innerText = `YOLO 检测器就绪 (模拟)`;
             el.headerStatusDot.style.backgroundColor = 'var(--accent-emerald)';
             el.headerStatusDot.style.boxShadow = '0 0 8px var(--accent-emerald)';
-            
-            // Restore pulse color
             el.headerStatusDot.style.setProperty('--accent-emerald', '#10b981');
             
             el.geminiStatusText.innerText = `当前模式：本地 YOLO 模拟检测`;
@@ -291,37 +424,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function getActiveModelName() {
-        if (state.geminiModel === 'custom') {
-            return state.geminiCustomModel.trim() || 'gemini-3.5-flash';
-        }
-        return state.geminiModel;
-    }
-
-    el.inputApiKey.addEventListener('input', () => {
-        state.geminiApiKey = el.inputApiKey.value;
-        localStorage.setItem('gemini_api_key', state.geminiApiKey);
-        updateGeminiStatus();
-    });
-
-    el.selectModel.addEventListener('change', () => {
-        state.geminiModel = el.selectModel.value;
-        localStorage.setItem('gemini_model', state.geminiModel);
-        if (state.geminiModel === 'custom') {
-            el.groupCustomModel.style.display = 'block';
-        } else {
-            el.groupCustomModel.style.display = 'none';
-        }
-        updateGeminiStatus();
-    });
-
-    el.inputCustomModel.addEventListener('input', () => {
-        state.geminiCustomModel = el.inputCustomModel.value;
-        localStorage.setItem('gemini_custom_model', state.geminiCustomModel);
-        updateGeminiStatus();
-    });
-
-    // Mode Switcher Tabs
+    // Tabs switching between modes
     el.btnModeSingle.addEventListener('click', () => {
         if (state.mode === 'single') return;
         state.mode = 'single';
@@ -534,36 +637,44 @@ document.addEventListener('DOMContentLoaded', () => {
     el.btnStartDetect.addEventListener('click', () => {
         if (state.selectedFiles.length === 0) return;
 
-        const hasKey = state.geminiApiKey.trim() !== '';
+        const prov = state.provider;
+        const apiKey = getProviderSetting(prov, 'api_key', '').trim();
+        const hasKey = apiKey !== '';
 
         if (state.mode === 'single') {
             if (hasKey) {
-                runGeminiSingleDetection(state.selectedFiles[0]);
+                runLiveSingleDetection(state.selectedFiles[0], prov, apiKey);
             } else {
-                printLog('未检测到 Gemini API Key，系统自动切换为本地 YOLO 算法模拟检测。', 'warn');
+                printLog(`未检测到 ${providerPresets[prov].name} API Key，系统自动切换为本地 YOLO 算法模拟检测。`, 'warn');
                 runYoloSingleDetection(state.selectedFiles[0]);
             }
         } else {
             if (hasKey) {
-                runGeminiBatchDetection(state.selectedFiles);
+                runLiveBatchDetection(state.selectedFiles, prov, apiKey);
             } else {
-                printLog('未检测到 Gemini API Key，系统自动切换为本地 YOLO 算法模拟检测。', 'warn');
+                printLog(`未检测到 ${providerPresets[prov].name} API Key，系统自动切换为本地 YOLO 算法模拟检测。`, 'warn');
                 runYoloBatchDetection(state.selectedFiles);
             }
         }
     });
 
     // ==========================================
-    // REAL GEMINI DETECTION (SINGLE IMAGE)
+    // MULTI-LLM LIVE DETECTION (SINGLE IMAGE)
     // ==========================================
-    async function runGeminiSingleDetection(file) {
+    async function runLiveSingleDetection(file, provider, apiKey) {
         showView('loading');
         el.loadingBar.style.width = '10%';
         el.loadingPercent.innerText = '10% Completed';
         
         const activeModel = getActiveModelName();
         el.loadingText.innerText = `正在读取图像，序列化为数据张量...`;
-        printLog(`[Gemini 检测启动] 选择模型: ${activeModel}, 开始处理: ${file.name}...`, 'info');
+        printLog(`[AI 检测启动] 平台: ${providerPresets[provider].name}, 模型: ${activeModel}, 处理文件: ${file.name}...`, 'info');
+
+        // Check if user is trying to run text-only models
+        if ((activeModel.includes('deepseek-chat') || activeModel.includes('deepseek-reasoner') || activeModel.includes('abab7')) && provider !== 'custom') {
+            printLog(`⚠️ 警告: 您选用的模型 (${activeModel}) 是纯文本模型，官方接口通常不接受图像输入。`, 'warn');
+            printLog(`我们已尝试提交，但如果接口报错，系统将自动使用 YOLO 本地模拟以确保运作。建议使用 Gemini 3.1 或视觉兼容节点进行图片分析。`, 'warn');
+        }
 
         try {
             // 1. Convert to Base64
@@ -576,14 +687,144 @@ document.addEventListener('DOMContentLoaded', () => {
 
             el.loadingBar.style.width = '35%';
             el.loadingPercent.innerText = '35% Completed';
-            el.loadingText.innerText = `正在发送多模态数据至 Google Gemini 平台...`;
-            printLog(`已将图像成功转换为 Base64。正在发起 API 请求到 ${activeModel}...`, 'info');
+            el.loadingText.innerText = `正在向 ${providerPresets[provider].name} 发起多模态分析请求...`;
+            printLog(`图像序列化成功。正在发送 API 请求...`, 'info');
 
-            // 2. Build request parameters
-            const apiKey = state.geminiApiKey.trim();
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/${activeModel}:generateContent?key=${apiKey}`;
+            const startTime = performance.now();
+            let detectedCracks = [];
+
+            // 2. Fetch specific API
+            if (provider === 'gemini') {
+                detectedCracks = await callGeminiAPI(base64Data, file.type || 'image/png', activeModel, apiKey);
+            } else {
+                // DeepSeek, MiniMax, Custom OpenAI
+                const baseUrl = getProviderSetting(provider, 'base_url', providerPresets[provider].defaultBaseUrl);
+                if (!baseUrl && provider === 'custom') {
+                    throw new Error("请配置自定义 API Base URL");
+                }
+                detectedCracks = await callOpenAICompatibleAPI(base64Data, file.type || 'image/png', provider, apiKey, baseUrl, activeModel);
+            }
+
+            const duration = ((performance.now() - startTime) / 1000).toFixed(2);
+            el.loadingBar.style.width = '85%';
+            el.loadingPercent.innerText = '85% Completed';
+            el.loadingText.innerText = `解析结构化坐标参数中...`;
+            printLog(`请求成功，用时 ${duration}s。开始绘制可视化形态图层...`, 'info');
+
+            // 3. Assemble results
+            el.loadingBar.style.width = '100%';
+            el.loadingPercent.innerText = '100% Completed';
+            assembleAIResult(file, detectedCracks, provider);
+
+        } catch (error) {
+            printLog(`AI 检测接口调用失败: ${error.message}`, 'error');
+            printLog('系统将自动尝试切换为本地 YOLO 算法模拟检测，以确保演示顺利运行...', 'warn');
             
-            const promptText = `
+            setTimeout(() => {
+                runYoloSingleDetection(file);
+            }, 1000);
+        }
+    }
+
+    // Gemini Native Client
+    async function callGeminiAPI(base64Data, mimeType, model, apiKey) {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+        
+        const promptText = getStructuredPrompt();
+
+        const requestBody = {
+            contents: [
+                {
+                    parts: [
+                        { text: promptText },
+                        {
+                            inlineData: {
+                                mimeType: mimeType,
+                                data: base64Data
+                            }
+                        }
+                    ]
+                }
+            ],
+            generationConfig: {
+                responseMimeType: "application/json"
+            }
+        };
+
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(requestBody)
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            const errMsg = errorData.error?.message || `HTTP ${response.status}`;
+            throw new Error(errMsg);
+        }
+
+        const resJson = await response.json();
+        const responseText = resJson.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (!responseText) throw new Error("模型响应的文本内容为空。");
+
+        return cleanAndParseJSON(responseText);
+    }
+
+    // OpenAI Compatible Vision Client (DeepSeek, MiniMax, Custom)
+    async function callOpenAICompatibleAPI(base64Data, mimeType, provider, apiKey, baseUrl, model) {
+        const endpoint = `${baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl}/chat/completions`;
+        const promptText = getStructuredPrompt();
+
+        const messages = [
+            {
+                role: "user",
+                content: [
+                    { type: "text", text: promptText },
+                    {
+                        type: "image_url",
+                        image_url: {
+                            url: `data:${mimeType};base64,${base64Data}`
+                        }
+                    }
+                ]
+            }
+        ];
+
+        const requestBody = {
+            model: model,
+            messages: messages,
+            temperature: 0.1
+        };
+
+        // Some models support response_format JSON
+        if (model.includes('flash') || model.includes('pro') || provider === 'deepseek' || provider === 'custom') {
+            requestBody.response_format = { type: "json_object" };
+        }
+
+        const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiKey}`
+            },
+            body: JSON.stringify(requestBody)
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            const errMsg = errorData.error?.message || `HTTP ${response.status}`;
+            throw new Error(errMsg);
+        }
+
+        const resJson = await response.json();
+        const responseText = resJson.choices?.[0]?.message?.content;
+        if (!responseText) throw new Error("API 接口返回内容为空。");
+
+        return cleanAndParseJSON(responseText);
+    }
+
+    function getStructuredPrompt() {
+        return `
 Analyze this concrete surface image. Detect all structural cracks.
 For each crack found, return:
 1. A bounding box 'box_2d' containing [ymin, xmin, ymax, xmax], with values normalized to 0-1000 (integers).
@@ -602,92 +843,33 @@ Return ONLY a JSON array of objects. DO NOT wrap it in markdown code blocks or a
   }
 ]
 `;
-
-            const requestBody = {
-                contents: [
-                    {
-                        parts: [
-                            { text: promptText },
-                            {
-                                inlineData: {
-                                    mimeType: file.type || 'image/png',
-                                    data: base64Data
-                                }
-                            }
-                        ]
-                    }
-                ],
-                generationConfig: {
-                    responseMimeType: "application/json"
-                }
-            };
-
-            const startTime = performance.now();
-            
-            // 3. Fetch API
-            const response = await fetch(url, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(requestBody)
-            });
-
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                const errMsg = errorData.error?.message || `HTTP ${response.status}`;
-                throw new Error(errMsg);
-            }
-
-            const resJson = await response.json();
-            const duration = ((performance.now() - startTime) / 1000).toFixed(2);
-            
-            el.loadingBar.style.width = '80%';
-            el.loadingPercent.innerText = '80% Completed';
-            el.loadingText.innerText = `解析 Gemini 结构化响应数据中...`;
-            printLog(`API 请求成功，用时 ${duration}s。开始解析返回的 JSON 数据...`, 'info');
-
-            // 4. Parse Structured output
-            const responseText = resJson.candidates?.[0]?.content?.parts?.[0]?.text;
-            if (!responseText) {
-                throw new Error("模型未返回有效的内容部分。");
-            }
-
-            // Clean markdown blocks if present
-            let cleanText = responseText.trim();
-            if (cleanText.startsWith('```json')) {
-                cleanText = cleanText.substring(7);
-            } else if (cleanText.startsWith('```')) {
-                cleanText = cleanText.substring(3);
-            }
-            if (cleanText.endsWith('```')) {
-                cleanText = cleanText.substring(0, cleanText.length - 3);
-            }
-            cleanText = cleanText.trim();
-
-            const detectedCracks = JSON.parse(cleanText);
-            if (!Array.isArray(detectedCracks)) {
-                throw new Error("返回结果非标准的 JSON 数组格式。");
-            }
-
-            el.loadingBar.style.width = '100%';
-            el.loadingPercent.innerText = '100% Completed';
-            
-            // 5. Assemble results
-            assembleGeminiResult(file, detectedCracks);
-
-        } catch (error) {
-            printLog(`Gemini API 检测失败: ${error.message}`, 'error');
-            printLog('系统将自动尝试切换为本地 YOLO 算法模拟检测，以确保演示顺利运行...', 'warn');
-            
-            // Fallback to YOLO
-            setTimeout(() => {
-                runYoloSingleDetection(file);
-            }, 1000);
-        }
     }
 
-    function assembleGeminiResult(file, rawCracks) {
+    function cleanAndParseJSON(responseText) {
+        let cleanText = responseText.trim();
+        if (cleanText.startsWith('```json')) {
+            cleanText = cleanText.substring(7);
+        } else if (cleanText.startsWith('```')) {
+            cleanText = cleanText.substring(3);
+        }
+        if (cleanText.endsWith('```')) {
+            cleanText = cleanText.substring(0, cleanText.length - 3);
+        }
+        cleanText = cleanText.trim();
+
+        let parsed = JSON.parse(cleanText);
+        // Handle wrapper JSON properties (some models wrap it as {"cracks": [...]})
+        if (!Array.isArray(parsed) && parsed.cracks && Array.isArray(parsed.cracks)) {
+            parsed = parsed.cracks;
+        }
+
+        if (!Array.isArray(parsed)) {
+            throw new Error("模型返回的内容未能成功解析为 JSON 数组。");
+        }
+        return parsed;
+    }
+
+    function assembleAIResult(file, rawCracks, provider) {
         const projectDetails = {
             name: el.inputProjName.value || '桥梁裂纹检测项目',
             bridge: el.inputBridgeName.value || '厦门大桥',
@@ -696,7 +878,6 @@ Return ONLY a JSON array of objects. DO NOT wrap it in markdown code blocks or a
             gsd: state.gsd
         };
 
-        // Map raw coordinates to our schema
         const cracks = rawCracks.map((cr, idx) => {
             const ymin = cr.box_2d[0];
             const xmin = cr.box_2d[1];
@@ -704,15 +885,12 @@ Return ONLY a JSON array of objects. DO NOT wrap it in markdown code blocks or a
             const xmax = cr.box_2d[3];
             
             const box = {
-                x: xmin,
-                y: ymin,
-                w: xmax - xmin,
-                h: ymax - ymin
+                x: xmin, y: ymin,
+                w: xmax - xmin, h: ymax - ymin
             };
 
             const points = cr.points.map(pt => ({ x: pt[0], y: pt[1] }));
             
-            // Calculate mm parameters from pixel counts using GSD
             const widthMm = parseFloat((cr.width_px * state.gsd).toFixed(2));
             const avgWidthMm = parseFloat((cr.width_px * 0.72 * state.gsd).toFixed(2));
             const lengthMm = parseFloat((cr.length_px * state.gsd).toFixed(1));
@@ -727,10 +905,8 @@ Return ONLY a JSON array of objects. DO NOT wrap it in markdown code blocks or a
             };
         });
 
-        // Calculations
         const count = cracks.length;
         if (count === 0) {
-            // Render no cracks view
             state.currentDetection = {
                 fileName: file.name,
                 fileSrc: file.isMockSample ? file.src : URL.createObjectURL(file),
@@ -738,7 +914,6 @@ Return ONLY a JSON array of objects. DO NOT wrap it in markdown code blocks or a
                 stats: { count: 0, maxWidth: 0, avgWidth: 0, maxLength: 0, riskLevel: 'Low', riskDesc: '正常', riskClass: 'risk-low' },
                 project: projectDetails
             };
-            
             el.metricCount.innerText = `0 条`;
             el.metricMaxWidth.innerText = `0.00 mm`;
             el.metricAvgWidth.innerText = `0.00 mm`;
@@ -746,7 +921,7 @@ Return ONLY a JSON array of objects. DO NOT wrap it in markdown code blocks or a
             el.metricRisk.innerText = '正常';
             el.metricRisk.className = 'risk-badge risk-low';
             
-            printLog(`[Gemini 检测完毕] 未发现明显裂纹特征，结构指标正常。`, 'success');
+            printLog(`[${providerPresets[provider].name} 检测完毕] 未分析出明显裂缝形态，结构指标安全。`, 'success');
         } else {
             const maxWidth = Math.max(...cracks.map(c => c.widthMm));
             const avgWidth = parseFloat((cracks.reduce((acc, c) => acc + c.avgWidthMm, 0) / count).toFixed(2));
@@ -774,7 +949,6 @@ Return ONLY a JSON array of objects. DO NOT wrap it in markdown code blocks or a
                 project: projectDetails
             };
 
-            // UI Metrics
             el.metricCount.innerText = `${count} 条`;
             el.metricMaxWidth.innerText = `${maxWidth.toFixed(2)} mm`;
             el.metricAvgWidth.innerText = `${avgWidth.toFixed(2)} mm`;
@@ -786,7 +960,7 @@ Return ONLY a JSON array of objects. DO NOT wrap it in markdown code blocks or a
             el.metricBridge.innerText = projectDetails.bridge;
             el.metricLocation.innerText = projectDetails.location;
 
-            printLog(`[Gemini 检测完毕] 共识别裂缝: ${count}条, 最大宽度: ${maxWidth.toFixed(2)}mm, 安全评级: ${riskDesc}`, 'success');
+            printLog(`[${providerPresets[provider].name} 检测完毕] 识别出裂缝: ${count}条, 最大宽度: ${maxWidth.toFixed(2)}mm, 结构等级: ${riskDesc}`, 'success');
         }
 
         renderResultCanvas();
@@ -850,7 +1024,6 @@ Return ONLY a JSON array of objects. DO NOT wrap it in markdown code blocks or a
     }
 
     function assembleYoloSingleResult(file) {
-        // Fallback mockup loader
         const sampleId = file.isMockSample ? file.sampleId : 'custom';
         const projectDetails = {
             name: el.inputProjName.value || '桥梁裂纹检测项目',
@@ -878,7 +1051,6 @@ Return ONLY a JSON array of objects. DO NOT wrap it in markdown code blocks or a
                 };
             });
         } else {
-            // Procedural cracks
             cracks = [
                 {
                     id: 1,
@@ -931,7 +1103,6 @@ Return ONLY a JSON array of objects. DO NOT wrap it in markdown code blocks or a
             project: projectDetails
         };
 
-        // Render Dashboard Stats
         el.metricCount.innerText = `${count} 条`;
         el.metricMaxWidth.innerText = `${maxWidth.toFixed(2)} mm`;
         el.metricAvgWidth.innerText = `${avgWidth.toFixed(2)} mm`;
@@ -947,16 +1118,6 @@ Return ONLY a JSON array of objects. DO NOT wrap it in markdown code blocks or a
 
         renderResultCanvas();
         showView('result');
-    }
-
-    function calculatePolylineLength(points) {
-        let length = 0;
-        for (let i = 1; i < points.length; i++) {
-            const dx = points[i].x - points[i-1].x;
-            const dy = points[i].y - points[i-1].y;
-            length += Math.sqrt(dx*dx + dy*dy);
-        }
-        return length;
     }
 
     // Draw Visual Canvas Annotations
@@ -998,7 +1159,7 @@ Return ONLY a JSON array of objects. DO NOT wrap it in markdown code blocks or a
                     ctx.textBaseline = 'middle';
                     ctx.fillText(` [${crack.id}] W:${crack.widthMm.toFixed(2)}mm L:${crack.lengthMm.toFixed(0)}mm`, boxX + 6, boxY - tagH/2);
 
-                    // 3. Crack path polyline overlay
+                    // 3. Crack path overlay
                     ctx.strokeStyle = '#22c55e';
                     ctx.lineWidth = Math.max(4, canvas.width / 220);
                     ctx.lineCap = 'round';
@@ -1022,7 +1183,7 @@ Return ONLY a JSON array of objects. DO NOT wrap it in markdown code blocks or a
         };
     }
 
-    // Toggle annotation layers
+    // Toggle layers
     el.btnToggleCrack.addEventListener('click', () => {
         state.showAnnotations = !state.showAnnotations;
         if (state.showAnnotations) {
@@ -1059,9 +1220,9 @@ Return ONLY a JSON array of objects. DO NOT wrap it in markdown code blocks or a
     });
 
     // ==========================================
-    // BATCH DETECTION (REAL GEMINI)
+    // MULTI-LLM BATCH DETECTION WORKFLOW
     // ==========================================
-    async function runGeminiBatchDetection(files) {
+    async function runLiveBatchDetection(files, provider, apiKey) {
         showView('batch');
         el.batchTableBody.innerHTML = '';
         el.btnExportBatchExcel.disabled = true;
@@ -1084,76 +1245,28 @@ Return ONLY a JSON array of objects. DO NOT wrap it in markdown code blocks or a
         updateBatchQueueDisplay();
         
         const activeModel = getActiveModelName();
-        printLog(`[Gemini 批量检测启动] 开始分析共 ${files.length} 张图片...`, 'info');
+        printLog(`[AI 批量检测启动] 服务商: ${providerPresets[provider].name}, 共 ${files.length} 张图片...`, 'info');
 
         for (let fileIdx = 0; fileIdx < state.batchQueue.length; fileIdx++) {
             const item = state.batchQueue[fileIdx];
             item.status = 'running';
             updateBatchQueueDisplay();
-            printLog(`[${fileIdx + 1}/${files.length}] 正在使用 Gemini API 分析 ${item.fileName}...`, 'info');
+            printLog(`[${fileIdx + 1}/${files.length}] 正在使用 ${activeModel} 分析 ${item.fileName}...`, 'info');
 
             try {
                 // 1. Base64
                 const base64Data = await fileToBase64(item.fileObject);
+                let detected = [];
 
-                // 2. Query Gemini
-                const apiKey = state.geminiApiKey.trim();
-                const url = `https://generativelanguage.googleapis.com/v1beta/models/${activeModel}:generateContent?key=${apiKey}`;
-                
-                const promptText = `
-Analyze this concrete surface image. Detect all structural cracks.
-Return ONLY a JSON array of objects, each detailing detected crack coordinates and pixel sizing:
-[
-  {
-    "id": number,
-    "box_2d": [ymin, xmin, ymax, xmax],
-    "points": [[x1, y1], [x2, y2], ...],
-    "width_px": number,
-    "length_px": number
-  }
-]
-`;
+                // 2. Fetch specific API
+                if (provider === 'gemini') {
+                    detected = await callGeminiAPI(base64Data, item.fileObject.type || 'image/png', activeModel, apiKey);
+                } else {
+                    const baseUrl = getProviderSetting(provider, 'base_url', providerPresets[provider].defaultBaseUrl);
+                    detected = await callOpenAICompatibleAPI(base64Data, item.fileObject.type || 'image/png', provider, apiKey, baseUrl, activeModel);
+                }
 
-                const requestBody = {
-                    contents: [
-                        {
-                            parts: [
-                                { text: promptText },
-                                {
-                                    inlineData: {
-                                        mimeType: item.fileObject.type || 'image/png',
-                                        data: base64Data
-                                    }
-                                }
-                            ]
-                        }
-                    ],
-                    generationConfig: {
-                        responseMimeType: "application/json"
-                    }
-                };
-
-                const response = await fetch(url, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(requestBody)
-                });
-
-                if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-                const resJson = await response.json();
-                const responseText = resJson.candidates?.[0]?.content?.parts?.[0]?.text;
-                if (!responseText) throw new Error("API response empty.");
-
-                let cleanText = responseText.trim();
-                if (cleanText.startsWith('```json')) cleanText = cleanText.substring(7);
-                else if (cleanText.startsWith('```')) cleanText = cleanText.substring(3);
-                if (cleanText.endsWith('```')) cleanText = cleanText.substring(0, cleanText.length - 3);
-                cleanText = cleanText.trim();
-
-                const detected = JSON.parse(cleanText);
-
-                // 3. Map
+                // 3. Map values
                 item.status = 'completed';
                 item.cracksCount = detected.length;
                 if (detected.length > 0) {
@@ -1177,11 +1290,11 @@ Return ONLY a JSON array of objects, each detailing detected crack coordinates a
                     item.riskDesc = '正常';
                 }
 
-                printLog(`[${fileIdx + 1}/${files.length}] Gemini 完成 ${item.fileName}: 发现 ${item.cracksCount}条裂纹, MaxW = ${item.maxWidth.toFixed(2)}mm`, 'success');
+                printLog(`[${fileIdx + 1}/${files.length}] 完成 ${item.fileName}: 找到 ${item.cracksCount}条裂纹, MaxW = ${item.maxWidth.toFixed(2)}mm`, 'success');
 
             } catch (err) {
-                // Fallback to simulated item on API failure
-                printLog(`[${fileIdx + 1}/${files.length}] Gemini 接口失败 (${err.message})。降级为模拟分析...`, 'warn');
+                // Graceful fallback to simulated values
+                printLog(`[${fileIdx + 1}/${files.length}] 接口失败 (${err.message})。降级为模拟分析...`, 'warn');
                 
                 const crackCount = Math.floor(Math.random() * 4) + 1;
                 let maxWidth = parseFloat(((Math.random() * 4 + 1.2) * state.gsd).toFixed(2));
@@ -1212,7 +1325,7 @@ Return ONLY a JSON array of objects, each detailing detected crack coordinates a
 
         state.isProcessingBatch = false;
         el.btnExportBatchExcel.disabled = false;
-        printLog(`[Gemini 批量任务完成] 所有图片分析完毕。`, 'success');
+        printLog(`[AI 批量检测完成] 队列处理完毕，报表已更新。`, 'success');
         appendNewHistoryReport(true);
     }
 
@@ -1282,7 +1395,7 @@ Return ONLY a JSON array of objects, each detailing detected crack coordinates a
                 item.risk = risk;
                 item.riskDesc = riskDesc;
 
-                printLog(`[${fileIdx + 1}/${files.length}] 完成 ${item.fileName}: 识别裂纹数 = ${crackCount}, MaxW = ${maxWidth}mm`, 'success');
+                printLog(`[${fileIdx + 1}/${files.length}] 完成 ${item.fileName}: 识别阻裂数 = ${crackCount}, MaxW = ${maxWidth}mm`, 'success');
                 
                 updateBatchSummaryCards();
                 updateBatchQueueDisplay();
@@ -1338,7 +1451,6 @@ Return ONLY a JSON array of objects, each detailing detected crack coordinates a
                 const idx = parseInt(btn.getAttribute('data-idx'));
                 const batchItem = state.batchQueue[idx];
                 
-                // Load into single viewer
                 const fileRef = batchItem.fileObject;
                 assembleYoloSingleResult({
                     name: batchItem.fileName,
@@ -1384,7 +1496,6 @@ Return ONLY a JSON array of objects, each detailing detected crack coordinates a
         printLog(`成功下载 Excel 报表: ${filename}`, 'success');
     }
 
-    // Export Single Report
     el.btnExportExcel.addEventListener('click', () => {
         const det = state.currentDetection;
         if (!det) return;
@@ -1425,7 +1536,6 @@ Return ONLY a JSON array of objects, each detailing detected crack coordinates a
         appendNewHistoryReport(false, filename, stats.count, stats.maxWidth);
     });
 
-    // Export Batch Merged Report
     el.btnExportBatchExcel.addEventListener('click', () => {
         if (state.batchQueue.length === 0) return;
 
@@ -1577,6 +1687,6 @@ Return ONLY a JSON array of objects, each detailing detected crack coordinates a
     initAccordions();
     initLogger();
     recalculateGSD();
-    loadGeminiSettings(); // Load keys and selections
+    initAIPlatformSettings(); // Initialize multi-provider settings
     el.btnStartDetect.disabled = true;
 });

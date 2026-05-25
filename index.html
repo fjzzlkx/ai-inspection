@@ -77,31 +77,40 @@
                 </div>
             </div>
 
-            <!-- Gemini API Settings Accordion -->
+            <!-- AI Platform Settings Accordion -->
             <div class="sidebar-card">
                 <div class="accordion-header" id="acc-header-gemini">
-                    <span>Gemini API 设置</span>
+                    <span>AI 模型平台设置</span>
                     <i data-lucide="chevron-down" style="width: 14px; height: 14px;"></i>
                 </div>
                 <div class="accordion-content" id="acc-content-gemini">
                     <div class="form-group">
-                        <label for="input-api-key">Gemini API Key</label>
+                        <label for="select-provider">选择服务商</label>
+                        <select id="select-provider" class="form-input" style="padding: 8px;">
+                            <option value="gemini">Google Gemini</option>
+                            <option value="deepseek">DeepSeek</option>
+                            <option value="minimax">MiniMax (名之梦)</option>
+                            <option value="custom">自定义 OpenAI 兼容</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="input-api-key">API Key</label>
                         <input type="password" id="input-api-key" class="form-input" placeholder="输入 API Key 开启真实检测">
                         <div class="form-subtext">密钥仅保存在本地，绝不向外泄露</div>
+                    </div>
+                    <div class="form-group" id="group-base-url" style="display: none;">
+                        <label for="input-base-url">API Base URL</label>
+                        <input type="text" id="input-base-url" class="form-input" placeholder="例如 https://api.deepseek.com/v1">
                     </div>
                     <div class="form-group">
                         <label for="select-model">模型选择</label>
                         <select id="select-model" class="form-input" style="padding: 8px;">
-                            <option value="gemini-2.5-flash">gemini-2.5-flash (推荐高速)</option>
-                            <option value="gemini-2.5-pro">gemini-2.5-pro (高精度)</option>
-                            <option value="gemini-3.5-flash">gemini-3.5-flash (最新)</option>
-                            <option value="gemini-3.5-pro">gemini-3.5-pro (最新旗舰)</option>
-                            <option value="custom">自定义模型 ID...</option>
+                            <!-- Will be dynamically populated in app.js -->
                         </select>
                     </div>
                     <div class="form-group" id="group-custom-model" style="display: none;">
                         <label for="input-custom-model">自定义模型 ID</label>
-                        <input type="text" id="input-custom-model" class="form-input" placeholder="如 gemini-3.5-flash">
+                        <input type="text" id="input-custom-model" class="form-input" placeholder="如 gemini-3.1-pro 或 deepseek-chat">
                     </div>
                     <div class="form-subtext" id="gemini-status-text" style="color: var(--text-muted); font-weight: 500;">
                         当前模式：本地 YOLO 模拟检测
