@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>林工桥梁裂纹AI自动识别系统 - LinGong Bridge Crack AI Inspection System</title>
+    <link rel="stylesheet" href="styles.css">
+    <!-- Lucide Icons CDN -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+    <!-- Header -->
+    <header>
+        <div class="header-left">
+            <div class="logo-container">
+                <!-- SVG Bridge Logo -->
+                <svg class="feather-icon logo-icon" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 12h18"></path>
+                    <path d="M12 2v20"></path>
+                    <path d="M3 18a9 9 0 0 1 18 0"></path>
+                    <path d="M8 12V8a4 4 0 0 1 8 0v4"></path>
+                </svg>
+            </div>
+            <div class="title-container">
+                <h1>林工桥梁裂纹AI自动识别系统</h1>
+                <p>LinGong Bridge Crack AI Inspection System</p>
+            </div>
+        </div>
+        <div class="header-right">
+            <div class="status-pill">
+                <span class="status-dot"></span>
+                <span>Yolo 检测器就绪</span>
+            </div>
+            <div class="version">v1.0.0</div>
+        </div>
+    </header>
+
+    <!-- App Container -->
+    <div class="app-container">
+        <!-- Left Sidebar -->
+        <aside class="sidebar">
+            <!-- Inspection Mode -->
+            <div class="sidebar-card">
+                <div class="sidebar-card-title">
+                    <span>检测模式</span>
+                    <i data-lucide="settings" style="width: 14px; height: 14px; color: var(--text-muted);"></i>
+                </div>
+                <div style="padding: 8px;">
+                    <div class="tabs-container">
+                        <button class="tab-btn active" id="btn-mode-single">
+                            <i data-lucide="image" style="width: 14px; height: 14px;"></i>
+                            单张图片
+                        </button>
+                        <button class="tab-btn" id="btn-mode-batch">
+                            <i data-lucide="copy" style="width: 14px; height: 14px;"></i>
+                            批量图片
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Upload File -->
+            <div class="upload-container">
+                <div class="sidebar-card-title">
+                    <span>上传文件</span>
+                    <i data-lucide="upload-cloud" style="width: 14px; height: 14px; color: var(--text-muted);"></i>
+                </div>
+                <div class="upload-zone" id="drop-zone">
+                    <input type="file" id="file-input" style="display: none;" accept="image/*" multiple>
+                    <i data-lucide="image" class="upload-icon"></i>
+                    <div class="upload-text">点击或拖拽图片到此处</div>
+                    <div class="upload-hint">支持 JPG / PNG / BMP / TIFF</div>
+                </div>
+                <!-- File preview list -->
+                <div id="file-list-container" style="display: none; display: flex; flex-direction: column; gap: 8px;">
+                    <!-- Dynamically populated files -->
+                </div>
+            </div>
+
+            <!-- Pixel Size Calibration Accordion -->
+            <div class="sidebar-card">
+                <div class="accordion-header active" id="acc-header-calib">
+                    <span>像素尺寸校准</span>
+                    <i data-lucide="chevron-down" style="width: 14px; height: 14px;"></i>
+                </div>
+                <div class="accordion-content open" id="acc-content-calib">
+                    <div class="form-group">
+                        <label for="input-gsd">GSD <span>(MM/PIXEL)</span></label>
+                        <input type="number" id="input-gsd" class="form-input" value="0.3" step="0.01" min="0.01">
+                        <div class="form-subtext">地面采样距离，最精确</div>
+                    </div>
+                    
+                    <div class="form-divider">— 或填写无人机参数自动计算 —</div>
+                    
+                    <div class="form-group">
+                        <label for="input-height">飞行高度 <span>(M)</span></label>
+                        <input type="number" id="input-height" class="form-input" value="60">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="input-focal">焦距 <span>(MM)</span></label>
+                        <input type="number" id="input-focal" class="form-input" value="8.8" step="0.1">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="input-sensor">传感器宽度 <span>(MM)</span></label>
+                        <input type="number" id="input-sensor" class="form-input" value="13.2" step="0.1">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Project Information Accordion -->
+            <div class="sidebar-card">
+                <div class="accordion-header" id="acc-header-proj">
+                    <span>项目信息</span>
+                    <i data-lucide="chevron-down" style="width: 14px; height: 14px;"></i>
+                </div>
+                <div class="accordion-content" id="acc-content-proj">
+                    <div class="form-group">
+                        <label for="input-proj-name">项目名称</label>
+                        <input type="text" id="input-proj-name" class="form-input" value="桥梁裂纹检测项目">
+                    </div>
+                    <div class="form-group">
+                        <label for="input-bridge-name">桥梁名称</label>
+                        <input type="text" id="input-bridge-name" class="form-input" value="厦门大桥">
+                    </div>
+                    <div class="form-group">
+                        <label for="input-location">检测位置</label>
+                        <input type="text" id="input-location" class="form-input" value="主梁跨中段">
+                    </div>
+                    <div class="form-group">
+                        <label for="input-inspector">检测人员</label>
+                        <input type="text" id="input-inspector" class="form-input" value="林工">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Start Detection Button -->
+            <button class="btn-primary" id="btn-start-detect">
+                <i data-lucide="play-circle"></i>
+                开始AI检测
+            </button>
+        </aside>
+
+        <!-- Center main content panel -->
+        <main class="main-content">
+            <!-- 1. Welcome Screen (Pre-inspection) -->
+            <div class="welcome-screen" id="view-welcome">
+                <div class="welcome-title-card">
+                    <div class="welcome-logo-container">
+                        <svg class="feather-icon logo-icon" viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M3 12h18"></path>
+                            <path d="M12 2v20"></path>
+                            <path d="M3 18a9 9 0 0 1 18 0"></path>
+                            <path d="M8 12V8a4 4 0 0 1 8 0v4"></path>
+                        </svg>
+                    </div>
+                    <h2>桥梁裂纹AI自动识别系统</h2>
+                    <p>上传无人机拍摄的图片或视频，AI自动识别裂纹、计算尺寸、生成报告</p>
+                </div>
+
+                <!-- Feature Grid -->
+                <div class="features-grid">
+                    <div class="feature-card">
+                        <div class="feature-icon-wrapper icon-blue">
+                            <i data-lucide="cpu" style="width: 20px; height: 20px;"></i>
+                        </div>
+                        <div class="feature-info">
+                            <h3>AI智能识别</h3>
+                            <p>基于深度学习自动检测桥梁裂纹，标记病害区域与形态特征。</p>
+                        </div>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon-wrapper icon-yellow">
+                            <i data-lucide="ruler" style="width: 20px; height: 20px;"></i>
+                        </div>
+                        <div class="feature-info">
+                            <h3>精确测量</h3>
+                            <p>高精度自动计算裂纹的长度、最大宽度和平均宽度（毫米级）。</p>
+                        </div>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon-wrapper icon-green">
+                            <i data-lucide="file-spreadsheet" style="width: 20px; height: 20px;"></i>
+                        </div>
+                        <div class="feature-info">
+                            <h3>统计报告</h3>
+                            <p>智能统计裂缝数据，自动生成结构化 Excel 检测报告，一键下载。</p>
+                        </div>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon-wrapper icon-purple">
+                            <i data-lucide="shield-check" style="width: 20px; height: 20px;"></i>
+                        </div>
+                        <div class="feature-info">
+                            <h3>本地运行</h3>
+                            <p>检测计算完全本地离线运行，保障核心基础设施数据绝对安全保密。</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Quick Try Panel -->
+                <div class="quick-try-panel">
+                    <h4>
+                        <i data-lucide="sparkles" style="width: 14px; height: 14px; color: var(--accent-amber);"></i>
+                        快速体验：点击加载内置桥梁裂缝示例图片
+                    </h4>
+                    <div class="quick-try-grid">
+                        <div class="sample-image-card" data-sample="1" title="桥墩混凝土垂直裂缝">
+                            <img src="assets/crack1.png" alt="桥墩裂缝">
+                            <div class="sample-image-label">示例 1：桥墩裂缝</div>
+                        </div>
+                        <div class="sample-image-card" data-sample="2" title="桥面龟裂与网状裂缝">
+                            <img src="assets/crack2.png" alt="桥面裂缝">
+                            <div class="sample-image-label">示例 2：桥面裂缝</div>
+                        </div>
+                        <div class="sample-image-card" data-sample="3" title="桥梁梁体斜向剪切裂缝">
+                            <img src="assets/crack3.png" alt="梁体斜裂缝">
+                            <div class="sample-image-label">示例 3：梁体斜裂缝</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tip Banner -->
+                <div class="tip-banner">
+                    <i data-lucide="info"></i>
+                    <span>使用提示：左侧选择检测模式 → 上传文件 → 设置校准参数 → 点击“开始AI检测”</span>
+                </div>
+            </div>
+
+            <!-- 2. Loading Screen (Inspection Running) -->
+            <div class="loading-screen" id="view-loading">
+                <div class="loading-spinner"></div>
+                <h3 class="loading-step-text" id="loading-text">正在启动 YOLOv8 AI 模型...</h3>
+                <div class="loading-progress-container">
+                    <div class="loading-progress-bar" id="loading-bar"></div>
+                </div>
+                <div class="form-subtext" id="loading-percent">0% Completed</div>
+            </div>
+
+            <!-- 3. Result Screen (Single Image Result) -->
+            <div class="result-screen" id="view-result">
+                <!-- Visual Canvas container -->
+                <div class="result-canvas-container">
+                    <div class="canvas-header">
+                        <div class="canvas-title">
+                            <i data-lucide="eye" style="width: 14px; height: 14px; color: var(--accent-cyan);"></i>
+                            <span>检测结果可视化分析</span>
+                        </div>
+                        <div class="canvas-actions">
+                            <button class="btn-canvas active" id="btn-toggle-crack">
+                                <i data-lucide="toggle-right" style="width: 12px; height: 12px;"></i>
+                                显示裂缝标注
+                            </button>
+                            <button class="btn-canvas" id="btn-toggle-original">
+                                <i data-lucide="image" style="width: 12px; height: 12px;"></i>
+                                对比原图
+                            </button>
+                        </div>
+                    </div>
+                    <div class="canvas-wrapper">
+                        <!-- We draw the image and vector paths here -->
+                        <canvas id="result-canvas"></canvas>
+                    </div>
+                </div>
+
+                <!-- Result metrics sidebar dashboard -->
+                <div class="result-dashboard">
+                    <!-- Statistics Panel -->
+                    <div class="metric-panel">
+                        <div class="metric-panel-title">病害统计指标</div>
+                        <div class="metrics-list">
+                            <div class="metric-item">
+                                <span class="metric-label">检测裂缝总数</span>
+                                <span class="metric-value" id="metric-count">0 条</span>
+                            </div>
+                            <div class="metric-item">
+                                <span class="metric-label">最大宽度 (Max W)</span>
+                                <span class="metric-value highlight-red" id="metric-max-width">0.00 mm</span>
+                            </div>
+                            <div class="metric-item">
+                                <span class="metric-label">平均宽度 (Avg W)</span>
+                                <span class="metric-value" id="metric-avg-width">0.00 mm</span>
+                            </div>
+                            <div class="metric-item">
+                                <span class="metric-label">最大长度 (Max L)</span>
+                                <span class="metric-value" id="metric-max-length">0.0 mm</span>
+                            </div>
+                            <div class="metric-item">
+                                <span class="metric-label">结构安全评估</span>
+                                <span class="risk-badge risk-low" id="metric-risk">正常</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Calibration Info Panel -->
+                    <div class="metric-panel">
+                        <div class="metric-panel-title">校准与位置信息</div>
+                        <div class="metrics-list">
+                            <div class="metric-item">
+                                <span class="metric-label">所用校准 GSD</span>
+                                <span class="metric-value" id="metric-gsd">0.3 mm/px</span>
+                            </div>
+                            <div class="metric-item">
+                                <span class="metric-label">桥梁名称</span>
+                                <span class="metric-value" id="metric-bridge">厦门大桥</span>
+                            </div>
+                            <div class="metric-item">
+                                <span class="metric-label">检测位置</span>
+                                <span class="metric-value" id="metric-location">主梁跨中段</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Operations -->
+                    <div class="dashboard-actions">
+                        <button class="btn-primary" id="btn-export-excel" style="margin-top: 0;">
+                            <i data-lucide="file-spreadsheet"></i>
+                            导出 Excel 报告
+                        </button>
+                        <button class="btn-secondary" id="btn-re-detect">
+                            <i data-lucide="refresh-cw" style="width: 14px; height: 14px;"></i>
+                            重新检测
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 4. Batch Results Screen -->
+            <div class="batch-screen" id="view-batch">
+                <div class="batch-summary-cards">
+                    <div class="batch-summary-card">
+                        <div class="batch-summary-label">处理图片总数</div>
+                        <div class="batch-summary-value" id="batch-total">0 张</div>
+                    </div>
+                    <div class="batch-summary-card">
+                        <div class="batch-summary-label">检测出裂缝总数</div>
+                        <div class="batch-summary-value highlight-red" id="batch-cracks">0 条</div>
+                    </div>
+                    <div class="batch-summary-card">
+                        <div class="batch-summary-label">超标裂缝图片数</div>
+                        <div class="batch-summary-value" id="batch-warning">0 张</div>
+                    </div>
+                    <div class="batch-summary-card">
+                        <div class="batch-summary-label">最大宽度</div>
+                        <div class="batch-summary-value highlight-red" id="batch-max-width">0.00 mm</div>
+                    </div>
+                </div>
+
+                <div class="batch-table-container">
+                    <div class="batch-table-header">
+                        <h4>批量图片检测队列与结果</h4>
+                        <button class="btn-primary" id="btn-export-batch-excel" style="margin-top:0; padding: 6px 12px; font-size:12px;" disabled>
+                            <i data-lucide="download" style="width: 12px; height: 12px;"></i>
+                            下载合并 Excel 报告
+                        </button>
+                    </div>
+                    <div class="batch-table-scroll">
+                        <table class="batch-table" id="batch-table">
+                            <thead>
+                                <tr>
+                                    <th>序号</th>
+                                    <th>图片名称</th>
+                                    <th>状态</th>
+                                    <th>裂缝数量</th>
+                                    <th>最大宽度 (mm)</th>
+                                    <th>平均宽度 (mm)</th>
+                                    <th>总长度 (mm)</th>
+                                    <th>风险等级</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Dynamic rows -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Right Sidebar -->
+        <aside class="sidebar sidebar-right">
+            <!-- History Reports List -->
+            <div class="sidebar-card">
+                <div class="sidebar-card-title">
+                    <span>历史报告</span>
+                    <i data-lucide="folder-archive" style="width: 14px; height: 14px; color: var(--text-muted);"></i>
+                </div>
+                <div class="reports-list" id="history-reports-list">
+                    <!-- Static preset reports from screenshot -->
+                    <div class="report-item" data-filename="report_90b7f67c_20260327_215050.xlsx">
+                        <div class="report-name">report_90b7f67c_20260327_215050.xlsx</div>
+                        <div class="report-meta">
+                            <span>2026-03-27 21:50:51 • 11.0 KB</span>
+                            <button class="btn-download-report">
+                                <i data-lucide="download" style="width: 10px; height: 10px;"></i>下载
+                            </button>
+                        </div>
+                    </div>
+                    <div class="report-item" data-filename="batch_report_be21c4a4_20260327_170450.xlsx">
+                        <div class="report-name">batch_report_be21c4a4_20260327_170450.xlsx</div>
+                        <div class="report-meta">
+                            <span>2026-03-27 17:04:50 • 12.2 KB</span>
+                            <button class="btn-download-report">
+                                <i data-lucide="download" style="width: 10px; height: 10px;"></i>下载
+                            </button>
+                        </div>
+                    </div>
+                    <div class="report-item" data-filename="batch_report_d680f065_20260327_155846.xlsx">
+                        <div class="report-name">batch_report_d680f065_20260327_155846.xlsx</div>
+                        <div class="report-meta">
+                            <span>2026-03-27 15:58:47 • 12.2 KB</span>
+                            <button class="btn-download-report">
+                                <i data-lucide="download" style="width: 10px; height: 10px;"></i>下载
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Detection Console Logs -->
+            <div class="logger-container">
+                <div class="logger-header">
+                    <span style="font-size:12px; font-weight:700; display:flex; align-items:center; gap:6px;">
+                        <i data-lucide="terminal" style="width: 14px; height: 14px; color: var(--accent-cyan);"></i>
+                        检测日志
+                    </span>
+                    <button class="btn-clear-log" id="btn-clear-logs" title="清空日志">
+                        <i data-lucide="trash-2" style="width: 12px; height: 12px;"></i>
+                    </button>
+                </div>
+                <div class="logger-console" id="log-console">
+                    <!-- Dynamic logs will append here -->
+                </div>
+            </div>
+        </aside>
+    </div>
+
+    <!-- Application Script -->
+    <script src="app.js"></script>
+</body>
+</html>
